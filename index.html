@@ -1927,7 +1927,15 @@
         toast('Firebase config cleared');
         return;
       }
-      const parsed = JSON.parse(raw);
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        const normalized = raw
+          .replace(/^const\s+firebaseConfig\s*=\s*/i, '')
+          .replace(/;\s*$/, '');
+        parsed = Function(`"use strict"; return (${normalized});`)();
+      }
       ['apiKey', 'authDomain', 'projectId', 'appId'].forEach((key) => {
         if (!parsed[key]) throw new Error(`Missing Firebase config field: ${key}`);
       });

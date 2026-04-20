@@ -1590,6 +1590,70 @@
     } catch {}
   }
 
+  function extractFirstObjectLiteral(source) {
+    const start = source.indexOf('{');
+    if (start === -1) throw new Error('No object literal found in Firebase config input.');
+
+    let depth = 0;
+    let quote = '';
+    let escaped = false;
+
+    for (let index = start; index < source.length; index += 1) {
+      const char = source[index];
+
+      if (quote) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (char === quote) {
+          quote = '';
+        }
+        continue;
+      }
+
+      if (char === '"' || char === '\'' || char === '`') {
+        quote = char;
+        continue;
+      }
+
+      if (char === '{') depth += 1;
+      if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          return source.slice(start, index + 1);
+        }
+      }
+    }
+
+    throw new Error('Could not find a complete Firebase config object.');
+  }
+
+  function parseFirebaseConfigInput(raw) {
+    const cleaned = String(raw || '')
+      .replace(/```(?:json|javascript|js)?/gi, '')
+      .replace(/```/g, '')
+      .trim();
+
+    if (!cleaned) {
+      throw new Error('Firebase config input is empty.');
+    }
+
+    try {
+      return JSON.parse(cleaned);
+    } catch {}
+
+    const snippet = cleaned.includes('firebaseConfig')
+      ? cleaned.replace(/^.*?firebaseConfig\s*=\s*/is, '')
+      : cleaned;
+    const objectLiteral = extractFirstObjectLiteral(snippet);
+    return Function(`"use strict"; return (${objectLiteral});`)();
+  }
+
   function loadGoogleClientId() {
     try {
       return localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '';
@@ -1927,15 +1991,7 @@
         toast('Firebase config cleared');
         return;
       }
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        const normalized = raw
-          .replace(/^const\s+firebaseConfig\s*=\s*/i, '')
-          .replace(/;\s*$/, '');
-        parsed = Function(`"use strict"; return (${normalized});`)();
-      }
+      const parsed = parseFirebaseConfigInput(raw);
       ['apiKey', 'authDomain', 'projectId', 'appId'].forEach((key) => {
         if (!parsed[key]) throw new Error(`Missing Firebase config field: ${key}`);
       });

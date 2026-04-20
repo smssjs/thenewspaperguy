@@ -20,5 +20,10 @@ service cloud.firestore {
     match /global/metrics {
       allow read, write: if signedIn();
     }
+
+    match /global/appConfig {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

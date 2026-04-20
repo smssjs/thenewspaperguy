@@ -506,6 +506,54 @@
     line-height: 1.7;
   }
 
+  .starter-set-panel {
+    margin: 0 0 40px;
+    padding: 22px 24px;
+    border: 1px solid var(--ink);
+    background: rgba(196, 52, 28, 0.03);
+  }
+
+  .starter-set-preview {
+    margin-top: 14px;
+    border-top: 1px solid var(--soft-rule);
+    padding-top: 14px;
+  }
+
+  .starter-set-preview-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .starter-set-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .starter-set-item {
+    padding: 10px 12px;
+    border: 1px solid var(--soft-rule);
+    background: var(--paper);
+  }
+
+  .starter-set-item-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .starter-set-item-meta {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    word-break: break-word;
+  }
+
   .google-sync-panel {
     margin: 0 0 40px;
     padding: 22px 24px;
@@ -1541,9 +1589,10 @@
         <div class="storage-actions">
           <button class="storage-btn" id="export-feeds-btn">Export Subscriptions</button>
           <button class="storage-btn secondary" id="import-feeds-btn">Import Backup</button>
+          <button class="storage-btn secondary" id="reset-starter-btn">Reset To Starter Set</button>
           <input class="storage-input" type="file" id="import-feeds-input" accept="application/json,.json">
         </div>
-        <div class="storage-help">Backups are plain JSON files containing your configured feed names, URLs, categories, columns, and hidden-state settings.</div>
+        <div class="storage-help">Backups are plain JSON files containing your configured feed names, URLs, categories, columns, and hidden-state settings. Reset restores the admin-defined starter edition for this app.</div>
       </div>
 
       <div class="discover">
@@ -1600,6 +1649,21 @@
           <button id="save-donation-link-btn">Save Donation Link</button>
         </div>
         <div class="storage-help">Leave the config field empty to fall back to the baked-in project settings for this app.</div>
+      </div>
+
+      <div class="starter-set-panel">
+        <div class="section-label">Starter Edition</div>
+        <h3 class="firebase-title">Control the first-time reader experience</h3>
+        <p class="firebase-copy">The starter set is what first-time visitors receive and what the subscriber reset action restores. Curate your feeds in Configure, then save the current edition here as the default starter set.</p>
+        <div class="firebase-actions">
+          <button class="storage-btn" id="save-starter-set-btn">Save Current Feeds As Starter Set</button>
+          <button class="storage-btn secondary" id="load-starter-set-btn">Load Starter Set Into This Browser</button>
+        </div>
+        <div class="diag-origin admin-dashboard-status" id="starter-set-status"></div>
+        <div class="starter-set-preview">
+          <div class="starter-set-preview-title">Current Starter Set</div>
+          <div class="starter-set-list" id="starter-set-list"></div>
+        </div>
       </div>
 
       <div class="admin-dashboard">
@@ -1663,6 +1727,7 @@
   const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
   const GOOGLE_DRIVE_FILENAME = 'thenewspaperguy-subscriptions.json';
   const FIRESTORE_STATS_DOC = 'global/metrics';
+  const FIRESTORE_APP_CONFIG_DOC = 'global/appConfig';
 
   // Category order and column mapping
   const CATEGORY_ORDER = ['Global', 'USA', 'Finance', 'India'];
@@ -1727,6 +1792,16 @@
     'Google News — World'
   ];
 
+  const DEFAULT_STARTER_FEEDS = SUGGESTIONS
+    .filter((suggestion) => DEFAULT_SEED_NAMES.includes(suggestion.name))
+    .map((suggestion) => ({
+      name: suggestion.name,
+      url: suggestion.url,
+      category: suggestion.category,
+      column: COLUMN_MAP[suggestion.category] || 4,
+      hidden: false,
+    }));
+
   const googleSyncState = {
     clientId: loadGoogleClientId(),
     accessToken: '',
@@ -1752,6 +1827,8 @@
     donationLink: loadDonationLink(),
     adminUsers: [],
     adminLoadedAt: '',
+    starterFeeds: DEFAULT_STARTER_FEEDS.map((feed) => ({ ...feed })),
+    starterLoadedAt: '',
   };
 
   let feeds = loadFeeds();
@@ -1986,6 +2063,111 @@
     button.hidden = !String(firebaseState.donationLink || '').trim();
   }
 
+  function cloneFeedList(feedList) {
+    return (Array.isArray(feedList) ? feedList : [])
+      .map(normalizeFeedRecord)
+      .filter(Boolean)
+      .map((feed) => ({ ...feed }));
+  }
+
+  function getStarterFeedList() {
+    const configured = cloneFeedList(firebaseState.starterFeeds);
+    return configured.length ? configured : cloneFeedList(DEFAULT_STARTER_FEEDS);
+  }
+
+  function updateStarterSetUI(messageOverride = '') {
+    const statusEl = document.getElementById('starter-set-status');
+    const listEl = document.getElementById('starter-set-list');
+    if (!statusEl || !listEl) return;
+
+    const starterFeeds = getStarterFeedList();
+    if (messageOverride) {
+      statusEl.className = 'diag-origin admin-dashboard-status';
+      statusEl.innerHTML = messageOverride;
+    } else if (firebaseState.starterLoadedAt) {
+      statusEl.className = 'diag-origin admin-dashboard-status';
+      statusEl.innerHTML = `Starter set loaded. Last update: <strong>${escapeHtml(formatAdminTimestamp(firebaseState.starterLoadedAt))}</strong>.`;
+    } else {
+      statusEl.className = 'diag-origin admin-dashboard-status';
+      statusEl.innerHTML = 'Using the built-in starter set. Save a new one from the admin account to override it.';
+    }
+
+    listEl.innerHTML = starterFeeds.length
+      ? starterFeeds.map((feed) => `
+          <div class="starter-set-item">
+            <div class="starter-set-item-name">${escapeHtml(feed.name)}</div>
+            <div class="starter-set-item-meta">${escapeHtml(feed.category || 'Other')} · Column ${escapeHtml(String(feed.column || COLUMN_MAP[feed.category] || 4))} · ${escapeHtml(feed.url)}</div>
+          </div>
+        `).join('')
+      : '<div class="admin-empty">No starter feeds configured.</div>';
+  }
+
+  async function loadStarterSetConfig() {
+    try {
+      initFirebaseIfNeeded();
+      const snap = await firebaseState.db.doc(FIRESTORE_APP_CONFIG_DOC).get();
+      if (!snap.exists) {
+        firebaseState.starterFeeds = cloneFeedList(DEFAULT_STARTER_FEEDS);
+        firebaseState.starterLoadedAt = '';
+        updateStarterSetUI();
+        return;
+      }
+
+      const data = snap.data() || {};
+      const configuredFeeds = cloneFeedList(data.starterFeeds);
+      firebaseState.starterFeeds = configuredFeeds.length ? configuredFeeds : cloneFeedList(DEFAULT_STARTER_FEEDS);
+      firebaseState.starterLoadedAt = data.updatedAt || '';
+      updateStarterSetUI();
+
+      const hasSavedFeeds = (() => {
+        try { return Boolean(localStorage.getItem(STORAGE_KEY)); } catch { return true; }
+      })();
+      if (!hasSavedFeeds) {
+        feeds = cloneFeedList(firebaseState.starterFeeds);
+        saveFeeds();
+        renderConfigure();
+        renderHome();
+      }
+    } catch {
+      firebaseState.starterFeeds = cloneFeedList(DEFAULT_STARTER_FEEDS);
+      firebaseState.starterLoadedAt = '';
+      updateStarterSetUI();
+    }
+  }
+
+  async function saveStarterSetConfig() {
+    if (!firebaseState.user) throw new Error('Sign in with the admin Google account first.');
+    if (!isAdminUser()) throw new Error('Only the admin account can change the starter set.');
+
+    initFirebaseIfNeeded();
+    const starterFeeds = cloneFeedList(feeds);
+    if (!starterFeeds.length) throw new Error('Add at least one feed before saving a starter set.');
+
+    updateStarterSetUI('Saving starter set to Firestore…');
+    const now = new Date().toISOString();
+    await firebaseState.db.doc(FIRESTORE_APP_CONFIG_DOC).set({
+      starterFeeds,
+      updatedAt: now,
+      updatedBy: firebaseState.user.email || firebaseState.user.uid || 'admin',
+    }, { merge: true });
+    firebaseState.starterFeeds = starterFeeds;
+    firebaseState.starterLoadedAt = now;
+    updateStarterSetUI();
+  }
+
+  function resetFeedsToStarterSet() {
+    const starterFeeds = cloneFeedList(getStarterFeedList());
+    if (!starterFeeds.length) {
+      toast('No starter set is available right now', true);
+      return;
+    }
+    feeds = starterFeeds;
+    saveFeeds();
+    renderConfigure();
+    renderHome();
+    toast('Reset to starter set');
+  }
+
   function updateAdminAccess() {
     const adminTab = document.getElementById('admin-tab');
     if (adminTab) adminTab.hidden = !isAdminUser();
@@ -2116,6 +2298,7 @@
       };
     });
     firebaseState.adminLoadedAt = new Date().toISOString();
+    await loadStarterSetConfig();
     updateAdminDashboard();
   }
 
@@ -2432,10 +2615,7 @@
         return parsed;
       }
     } catch { /* fall through */ }
-    // First-run seed: pick the default set from SUGGESTIONS
-    const seeded = SUGGESTIONS
-      .filter(s => DEFAULT_SEED_NAMES.includes(s.name))
-      .map(s => ({ name: s.name, url: s.url, category: s.category, column: COLUMN_MAP[s.category] || 4, hidden: false }));
+    const seeded = cloneFeedList(getStarterFeedList());
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded)); } catch {}
     return seeded;
   }
@@ -3261,7 +3441,7 @@
     list.innerHTML = '';
 
     if (feeds.length === 0) {
-      list.innerHTML = '<div class="no-feeds">No subscriptions yet. Add one above, or pick from the starters below.</div>';
+      list.innerHTML = '<div class="no-feeds">No subscriptions yet. Add one above, or reset back to the starter set.</div>';
     } else {
       feeds.forEach((feed, idx) => {
         const row = document.createElement('div');
@@ -3612,6 +3792,7 @@
   document.getElementById('export-feeds-btn').addEventListener('click', exportFeeds);
   document.getElementById('import-feeds-btn').addEventListener('click', () => document.getElementById('import-feeds-input').click());
   document.getElementById('import-feeds-input').addEventListener('change', importFeedsFromFile);
+  document.getElementById('reset-starter-btn').addEventListener('click', resetFeedsToStarterSet);
   document.getElementById('google-client-id-input').value = googleSyncState.clientId;
   document.getElementById('firebase-config-input').value = firebaseState.config ? JSON.stringify(firebaseState.config, null, 2) : '';
   document.getElementById('donation-link-input').value = firebaseState.donationLink || '';
@@ -3647,6 +3828,13 @@
     updateAdminDashboard(`<strong>Admin dashboard failed to load.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
     toast(error.message || 'Admin dashboard failed to load', true);
   }));
+  document.getElementById('save-starter-set-btn').addEventListener('click', () => saveStarterSetConfig().then(() => {
+    toast('Starter set saved');
+  }).catch((error) => {
+    updateStarterSetUI(`<strong>Starter set save failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+    toast(error.message || 'Starter set save failed', true);
+  }));
+  document.getElementById('load-starter-set-btn').addEventListener('click', resetFeedsToStarterSet);
   document.getElementById('support-btn').addEventListener('click', openDonationLink);
   document.getElementById('discover-input').addEventListener('keydown', (e) => {
     // Ctrl/Cmd + Enter submits from the multi-line textarea
@@ -3704,6 +3892,8 @@
   updateGoogleSyncStatus();
   updateFirebaseStatus();
   updateAdminDashboard();
+  updateStarterSetUI();
+  loadStarterSetConfig();
   updateSupportButtonState();
   setupArticleModal();
 </script>

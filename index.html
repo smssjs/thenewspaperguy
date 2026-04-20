@@ -170,6 +170,8 @@
     background: var(--accent);
   }
 
+  .tab[hidden] { display: none; }
+
   .tab .count {
     color: var(--accent);
     margin-left: 6px;
@@ -1336,6 +1338,7 @@
 <nav class="tabs">
   <button class="tab active" data-page="home">Home<span class="count" id="home-count"></span></button>
   <button class="tab" data-page="configure">Configure</button>
+  <button class="tab" data-page="admin" id="admin-tab" hidden>Admin</button>
   <button class="refresh-btn" id="refresh-btn" style="margin-left: auto; align-self: center; margin-right: 0;">↻ Refresh All</button>
 </nav>
 
@@ -1346,8 +1349,28 @@
 
   <section id="page-configure" class="page-hidden">
     <div class="configure">
-      <div class="section-label">Subscription Settings</div>
-      <h2 class="section-title">Manage your feeds</h2>
+      <div class="section-label">Subscriber Settings</div>
+      <h2 class="section-title">Build your edition</h2>
+
+      <div class="firebase-panel">
+        <div class="section-label">Cloud Profile</div>
+        <h3 class="firebase-title">Sign in and sync your subscriptions</h3>
+        <p class="firebase-copy">Use Google sign-in to keep your subscriptions available across devices. Your cloud profile stores your current feed list and layout in Firestore for your account.</p>
+        <div class="firebase-actions">
+          <button class="storage-btn" id="firebase-connect-btn">Sign In With Google</button>
+          <button class="storage-btn secondary" id="firebase-load-btn">Load Cloud Profile</button>
+          <button class="storage-btn secondary" id="firebase-save-btn">Save Cloud Profile</button>
+          <button class="storage-btn secondary" id="firebase-signout-btn">Sign Out</button>
+        </div>
+        <div class="firebase-stats">
+          <div class="firebase-stat">Signed-In User<strong data-signed-in-user>None</strong></div>
+        </div>
+        <div class="diag-origin google-sync-status" id="firebase-status"></div>
+        <div class="firebase-actions" style="margin-top:12px; margin-bottom:0;">
+          <button class="storage-btn" id="support-btn" hidden>Support This Project</button>
+        </div>
+        <div class="storage-help">Sign in, save your current setup, and use load on another device with the same Google account to restore it.</div>
+      </div>
 
       <div class="add-form">
         <input type="url" id="feed-url-input" placeholder="https://example.com/feed.xml" autocomplete="off">
@@ -1365,51 +1388,6 @@
           <input class="storage-input" type="file" id="import-feeds-input" accept="application/json,.json">
         </div>
         <div class="storage-help">Backups are plain JSON files containing your configured feed names, URLs, categories, columns, and hidden-state settings.</div>
-      </div>
-
-      <div class="google-sync-panel">
-        <div class="section-label">Google Drive Sync</div>
-        <h3 class="google-sync-title">Sync across devices</h3>
-        <p class="google-sync-copy">Sign in with Google and store your subscription configuration in your Google Drive app data folder. The same Google account can then load the same feed setup on any device.</p>
-        <div class="google-config-row">
-          <input type="text" id="google-client-id-input" placeholder="Google OAuth client ID (from Google Cloud console)" autocomplete="off">
-          <button id="save-google-client-id-btn">Save Client ID</button>
-        </div>
-        <div class="diag-origin google-sync-status" id="google-sync-status"></div>
-        <div class="google-sync-actions">
-          <button class="storage-btn" id="google-connect-btn">Connect Google Drive</button>
-          <button class="storage-btn secondary" id="google-load-btn">Load From Drive</button>
-          <button class="storage-btn secondary" id="google-save-btn">Save To Drive</button>
-          <button class="storage-btn secondary" id="google-signout-btn">Disconnect</button>
-        </div>
-        <div class="storage-help">You must create a Google OAuth web client and authorize this GitHub Pages origin before Drive sync will work. Your feed file is stored privately in Drive <code>appDataFolder</code>, not in visible folders.</div>
-      </div>
-
-      <div class="firebase-panel">
-        <div class="section-label">Firebase MVP</div>
-        <h3 class="firebase-title">Auth, subscriber tracking, and cloud profile</h3>
-        <p class="firebase-copy">This layer adds Google sign-in through Firebase Auth, Firestore-backed cloud subscriptions, basic subscriber metrics, and a donation button. Paste your Firebase web config JSON from the Firebase console to activate it.</p>
-        <textarea class="firebase-config-area" id="firebase-config-input" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}'></textarea>
-        <div class="firebase-actions">
-          <button class="storage-btn" id="save-firebase-config-btn">Save Firebase Config</button>
-          <button class="storage-btn secondary" id="firebase-connect-btn">Sign In With Google</button>
-          <button class="storage-btn secondary" id="firebase-load-btn">Load Cloud Profile</button>
-          <button class="storage-btn secondary" id="firebase-save-btn">Save Cloud Profile</button>
-          <button class="storage-btn secondary" id="firebase-signout-btn">Sign Out</button>
-        </div>
-        <div class="firebase-stats">
-          <div class="firebase-stat">Subscriber Count<strong id="subscriber-count">-</strong></div>
-          <div class="firebase-stat">Signed-In User<strong id="signed-in-user">None</strong></div>
-        </div>
-        <div class="diag-origin google-sync-status" id="firebase-status"></div>
-        <div class="donation-row">
-          <input type="url" id="donation-link-input" placeholder="Donation link (Stripe, Buy Me a Coffee, Ko-fi, etc.)" autocomplete="off">
-          <button id="save-donation-link-btn">Save Donation Link</button>
-        </div>
-        <div class="firebase-actions" style="margin-top:12px; margin-bottom:0;">
-          <button class="storage-btn" id="support-btn">Support This Project</button>
-        </div>
-        <div class="storage-help">Use Firestore as the app-controlled system of record for subscriber counting and cloud sync. Keep Google Drive sync as optional user-owned backup.</div>
       </div>
 
       <div class="discover">
@@ -1450,6 +1428,49 @@
       </div>
     </div>
   </section>
+
+  <section id="page-admin" class="page-hidden">
+    <div class="configure">
+      <div class="section-label">Admin Controls</div>
+      <h2 class="section-title">Run the publication</h2>
+
+      <div class="firebase-panel">
+        <div class="section-label">Firebase</div>
+        <h3 class="firebase-title">Project configuration and metrics</h3>
+        <p class="firebase-copy">These controls are only for the project admin. Subscriber sign-in and cloud sync use the baked-in Firebase project config unless you override it here.</p>
+        <textarea class="firebase-config-area" id="firebase-config-input" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}'></textarea>
+        <div class="firebase-actions">
+          <button class="storage-btn" id="save-firebase-config-btn">Save Firebase Config</button>
+        </div>
+        <div class="firebase-stats">
+          <div class="firebase-stat">Subscriber Count<strong id="subscriber-count">-</strong></div>
+        </div>
+        <div class="donation-row">
+          <input type="url" id="donation-link-input" placeholder="Donation link (Stripe, Buy Me a Coffee, Ko-fi, etc.)" autocomplete="off">
+          <button id="save-donation-link-btn">Save Donation Link</button>
+        </div>
+        <div class="storage-help">Leave the config field empty to fall back to the baked-in project settings for this app.</div>
+      </div>
+
+      <div class="google-sync-panel">
+        <div class="section-label">Google Drive Sync</div>
+        <h3 class="google-sync-title">Optional backup system</h3>
+        <p class="google-sync-copy">This remains available as an admin-maintained fallback for user-owned Drive backups. It is hidden from subscribers to keep their setup focused on feeds and cloud profile sync.</p>
+        <div class="google-config-row">
+          <input type="text" id="google-client-id-input" placeholder="Google OAuth client ID (from Google Cloud console)" autocomplete="off">
+          <button id="save-google-client-id-btn">Save Client ID</button>
+        </div>
+        <div class="diag-origin google-sync-status" id="google-sync-status"></div>
+        <div class="google-sync-actions">
+          <button class="storage-btn" id="google-connect-btn">Connect Google Drive</button>
+          <button class="storage-btn secondary" id="google-load-btn">Load From Drive</button>
+          <button class="storage-btn secondary" id="google-save-btn">Save To Drive</button>
+          <button class="storage-btn secondary" id="google-signout-btn">Disconnect</button>
+        </div>
+        <div class="storage-help">Your feed file is stored privately in Drive <code>appDataFolder</code>, not in visible folders.</div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div class="toast" id="toast"></div>
@@ -1461,6 +1482,16 @@
   const GOOGLE_SYNC_META_KEY = 'daily-feed-google-sync-meta-v1';
   const FIREBASE_WEB_CONFIG_KEY = 'daily-feed-firebase-web-config-v1';
   const DONATION_LINK_KEY = 'daily-feed-donation-link-v1';
+  const ADMIN_EMAILS = ['anand.x.singh@gmail.com'];
+  const DEFAULT_FIREBASE_WEB_CONFIG = {
+    apiKey: 'AIzaSyB39OenwfARk0vdYrvNJlWYf8e5QK90ye0',
+    authDomain: 'the-newspaper-guy-2dd63.firebaseapp.com',
+    projectId: 'the-newspaper-guy-2dd63',
+    storageBucket: 'the-newspaper-guy-2dd63.firebasestorage.app',
+    messagingSenderId: '1000958733023',
+    appId: '1:1000958733023:web:544ad057cc761bb991576a',
+    measurementId: 'G-T62JQBHYHM'
+  };
   const MAX_ITEMS_PER_FEED = 8;
   const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
   const GOOGLE_DRIVE_FILENAME = 'thenewspaperguy-subscriptions.json';
@@ -1559,14 +1590,14 @@
   function loadFirebaseWebConfig() {
     try {
       const raw = localStorage.getItem(FIREBASE_WEB_CONFIG_KEY);
-      return raw ? JSON.parse(raw) : null;
+      return raw ? JSON.parse(raw) : DEFAULT_FIREBASE_WEB_CONFIG;
     } catch {
-      return null;
+      return DEFAULT_FIREBASE_WEB_CONFIG;
     }
   }
 
   function saveFirebaseWebConfig(config) {
-    firebaseState.config = config;
+    firebaseState.config = config || DEFAULT_FIREBASE_WEB_CONFIG || null;
     try {
       if (config) localStorage.setItem(FIREBASE_WEB_CONFIG_KEY, JSON.stringify(config));
       else localStorage.removeItem(FIREBASE_WEB_CONFIG_KEY);
@@ -1771,41 +1802,73 @@
     updateGoogleSyncStatus();
   }
 
+  function getSignedInUserLabel() {
+    return firebaseState.user ? (firebaseState.user.email || firebaseState.user.displayName || firebaseState.user.uid) : 'None';
+  }
+
+  function isAdminUser(user = firebaseState.user) {
+    const email = String(user && user.email ? user.email : '').trim().toLowerCase();
+    return Boolean(email) && ADMIN_EMAILS.includes(email);
+  }
+
+  function updateSupportButtonState() {
+    const button = document.getElementById('support-btn');
+    if (!button) return;
+    button.hidden = !String(firebaseState.donationLink || '').trim();
+  }
+
+  function updateAdminAccess() {
+    const adminTab = document.getElementById('admin-tab');
+    if (adminTab) adminTab.hidden = !isAdminUser();
+
+    if (!isAdminUser() && adminTab && adminTab.classList.contains('active')) {
+      switchTab('configure');
+    }
+  }
+
   function updateFirebaseStatus(messageOverride = '') {
     const statusEl = document.getElementById('firebase-status');
     const countEl = document.getElementById('subscriber-count');
-    const userEl = document.getElementById('signed-in-user');
-    if (!statusEl || !countEl || !userEl) return;
-
-    countEl.textContent = firebaseState.subscriberCount == null ? '-' : String(firebaseState.subscriberCount);
-    userEl.textContent = firebaseState.user ? (firebaseState.user.email || firebaseState.user.displayName || firebaseState.user.uid) : 'None';
+    document.querySelectorAll('[data-signed-in-user]').forEach((el) => {
+      el.textContent = getSignedInUserLabel();
+    });
+    if (countEl) countEl.textContent = firebaseState.subscriberCount == null ? '-' : String(firebaseState.subscriberCount);
+    if (!statusEl) {
+      updateSupportButtonState();
+      return;
+    }
 
     if (messageOverride) {
       statusEl.className = 'diag-origin google-sync-status';
       statusEl.innerHTML = messageOverride;
+      updateSupportButtonState();
       return;
     }
 
     if (!firebaseState.config) {
       statusEl.className = 'diag-origin google-sync-status warn';
-      statusEl.innerHTML = `<strong>Firebase is not configured yet.</strong><br>Paste the Firebase web config JSON from the Firebase console, save it, then sign in with Google.`;
+      statusEl.innerHTML = `<strong>Cloud profile is unavailable right now.</strong><br>If you are the admin, add a valid Firebase web config from the Admin tab.`;
+      updateSupportButtonState();
       return;
     }
 
     if (!firebaseState.initialized) {
       statusEl.className = 'diag-origin google-sync-status';
-      statusEl.innerHTML = `Firebase config saved. Initialize the lean MVP by signing in with Google.`;
+      statusEl.innerHTML = `Cloud profile is ready. Sign in with Google to sync this edition across devices.`;
+      updateSupportButtonState();
       return;
     }
 
     if (!firebaseState.user) {
       statusEl.className = 'diag-origin google-sync-status';
       statusEl.innerHTML = `Firebase is ready. Sign in to create a subscriber profile, count users, and sync subscriptions through Firestore.`;
+      updateSupportButtonState();
       return;
     }
 
     statusEl.className = 'diag-origin google-sync-status';
     statusEl.innerHTML = `<strong>Firebase cloud sync is active.</strong> Signed in as <code>${escapeHtml(firebaseState.user.email || firebaseState.user.uid)}</code>. Subscription changes will sync to Firestore.`;
+    updateSupportButtonState();
   }
 
   function ensureFirebaseConfig() {
@@ -1831,6 +1894,7 @@
 
     firebaseState.auth.onAuthStateChanged(async (user) => {
       firebaseState.user = user || null;
+      updateAdminAccess();
       updateFirebaseStatus();
       if (user) {
         try {
@@ -1970,6 +2034,7 @@
     try {
       if (firebaseState.auth) await firebaseState.auth.signOut();
       firebaseState.user = null;
+      updateAdminAccess();
       updateFirebaseStatus();
       toast('Signed out');
     } catch (error) {
@@ -1987,8 +2052,10 @@
         firebaseState.auth = null;
         firebaseState.db = null;
         firebaseState.user = null;
+        document.getElementById('firebase-config-input').value = firebaseState.config ? JSON.stringify(firebaseState.config, null, 2) : '';
+        updateAdminAccess();
         updateFirebaseStatus();
-        toast('Firebase config cleared');
+        toast('Firebase config reset to default');
         return;
       }
       const parsed = parseFirebaseConfigInput(raw);
@@ -2001,6 +2068,8 @@
       firebaseState.auth = null;
       firebaseState.db = null;
       firebaseState.user = null;
+      document.getElementById('firebase-config-input').value = JSON.stringify(firebaseState.config, null, 2);
+      updateAdminAccess();
       updateFirebaseStatus();
       toast('Firebase config saved');
     } catch (error) {
@@ -2385,11 +2454,13 @@
 
   // ======= TABS =======
   function switchTab(name) {
+    const target = name === 'admin' && !isAdminUser() ? 'configure' : name;
     document.querySelectorAll('.tab').forEach(t => {
-      t.classList.toggle('active', t.dataset.page === name);
+      t.classList.toggle('active', t.dataset.page === target);
     });
-    document.getElementById('page-home').classList.toggle('page-hidden', name !== 'home');
-    document.getElementById('page-configure').classList.toggle('page-hidden', name !== 'configure');
+    document.getElementById('page-home').classList.toggle('page-hidden', target !== 'home');
+    document.getElementById('page-configure').classList.toggle('page-hidden', target !== 'configure');
+    document.getElementById('page-admin').classList.toggle('page-hidden', target !== 'admin');
   }
 
   document.querySelectorAll('.tab').forEach(tab => {
@@ -3314,6 +3385,7 @@
 
   // ======= INIT =======
   formatMasthead();
+  updateAdminAccess();
   updateCounts();
   renderHome();
   renderConfigure();
@@ -3321,6 +3393,7 @@
   updateStorageStatus();
   updateGoogleSyncStatus();
   updateFirebaseStatus();
+  updateSupportButtonState();
   setupArticleModal();
 </script>
 

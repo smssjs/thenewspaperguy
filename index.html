@@ -8,6 +8,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,900&family=JetBrains+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600&family=Bebas+Neue&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <style>
   :root {
     --ink: #1a1612;
@@ -564,6 +567,112 @@
 
   .google-sync-status {
     margin-bottom: 12px;
+  }
+
+  .firebase-panel {
+    margin: 0 0 40px;
+    padding: 22px 24px;
+    border: 1px solid var(--ink);
+    background: rgba(26, 22, 18, 0.03);
+  }
+
+  .firebase-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-style: italic;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+    margin-bottom: 10px;
+  }
+
+  .firebase-copy {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    max-width: 720px;
+  }
+
+  .firebase-config-area {
+    width: 100%;
+    min-height: 96px;
+    padding: 14px 16px;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--ink);
+    resize: vertical;
+    margin-bottom: 12px;
+  }
+
+  .firebase-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .firebase-stats {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .firebase-stat {
+    padding: 10px 14px;
+    border: 1px solid var(--soft-rule);
+    background: var(--paper);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .firebase-stat strong {
+    display: block;
+    margin-top: 6px;
+    font-size: 16px;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink);
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+  }
+
+  .donation-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0;
+    margin-top: 10px;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+  }
+
+  .donation-row input {
+    padding: 16px 18px;
+    border: none;
+    background: transparent;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    border-right: 1px solid var(--ink);
+  }
+
+  .donation-row button {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 0 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
   }
 
   /* Discover by Interest */
@@ -1181,6 +1290,8 @@
     .add-form input { border-right: none; border-bottom: 1px solid var(--ink); }
     .google-config-row { grid-template-columns: 1fr; }
     .google-config-row input { border-right: none; border-bottom: 1px solid var(--ink); }
+    .donation-row { grid-template-columns: 1fr; }
+    .donation-row input { border-right: none; border-bottom: 1px solid var(--ink); }
     .masthead-bottom { flex-direction: column; gap: 8px; align-items: flex-start; }
   }
 
@@ -1274,6 +1385,33 @@
         <div class="storage-help">You must create a Google OAuth web client and authorize this GitHub Pages origin before Drive sync will work. Your feed file is stored privately in Drive <code>appDataFolder</code>, not in visible folders.</div>
       </div>
 
+      <div class="firebase-panel">
+        <div class="section-label">Firebase MVP</div>
+        <h3 class="firebase-title">Auth, subscriber tracking, and cloud profile</h3>
+        <p class="firebase-copy">This layer adds Google sign-in through Firebase Auth, Firestore-backed cloud subscriptions, basic subscriber metrics, and a donation button. Paste your Firebase web config JSON from the Firebase console to activate it.</p>
+        <textarea class="firebase-config-area" id="firebase-config-input" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}'></textarea>
+        <div class="firebase-actions">
+          <button class="storage-btn" id="save-firebase-config-btn">Save Firebase Config</button>
+          <button class="storage-btn secondary" id="firebase-connect-btn">Sign In With Google</button>
+          <button class="storage-btn secondary" id="firebase-load-btn">Load Cloud Profile</button>
+          <button class="storage-btn secondary" id="firebase-save-btn">Save Cloud Profile</button>
+          <button class="storage-btn secondary" id="firebase-signout-btn">Sign Out</button>
+        </div>
+        <div class="firebase-stats">
+          <div class="firebase-stat">Subscriber Count<strong id="subscriber-count">-</strong></div>
+          <div class="firebase-stat">Signed-In User<strong id="signed-in-user">None</strong></div>
+        </div>
+        <div class="diag-origin google-sync-status" id="firebase-status"></div>
+        <div class="donation-row">
+          <input type="url" id="donation-link-input" placeholder="Donation link (Stripe, Buy Me a Coffee, Ko-fi, etc.)" autocomplete="off">
+          <button id="save-donation-link-btn">Save Donation Link</button>
+        </div>
+        <div class="firebase-actions" style="margin-top:12px; margin-bottom:0;">
+          <button class="storage-btn" id="support-btn">Support This Project</button>
+        </div>
+        <div class="storage-help">Use Firestore as the app-controlled system of record for subscriber counting and cloud sync. Keep Google Drive sync as optional user-owned backup.</div>
+      </div>
+
       <div class="discover">
         <div class="section-label">Discover by Interest</div>
         <h3 class="discover-title">Tell us what you want to read</h3>
@@ -1321,9 +1459,12 @@
   const STORAGE_KEY = 'daily-feed-subscriptions-v3';
   const GOOGLE_CLIENT_ID_KEY = 'daily-feed-google-client-id-v1';
   const GOOGLE_SYNC_META_KEY = 'daily-feed-google-sync-meta-v1';
+  const FIREBASE_WEB_CONFIG_KEY = 'daily-feed-firebase-web-config-v1';
+  const DONATION_LINK_KEY = 'daily-feed-donation-link-v1';
   const MAX_ITEMS_PER_FEED = 8;
   const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
   const GOOGLE_DRIVE_FILENAME = 'thenewspaperguy-subscriptions.json';
+  const FIRESTORE_STATS_DOC = 'global/metrics';
 
   // Category order and column mapping
   const CATEGORY_ORDER = ['Global', 'USA', 'Finance', 'India'];
@@ -1400,7 +1541,54 @@
     lastSyncedAt: loadGoogleSyncMeta().lastSyncedAt || '',
   };
 
+  const firebaseState = {
+    config: loadFirebaseWebConfig(),
+    app: null,
+    auth: null,
+    db: null,
+    user: null,
+    initialized: false,
+    syncTimer: null,
+    syncInFlight: false,
+    subscriberCount: null,
+    donationLink: loadDonationLink(),
+  };
+
   let feeds = loadFeeds();
+
+  function loadFirebaseWebConfig() {
+    try {
+      const raw = localStorage.getItem(FIREBASE_WEB_CONFIG_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveFirebaseWebConfig(config) {
+    firebaseState.config = config;
+    try {
+      if (config) localStorage.setItem(FIREBASE_WEB_CONFIG_KEY, JSON.stringify(config));
+      else localStorage.removeItem(FIREBASE_WEB_CONFIG_KEY);
+    } catch {}
+  }
+
+  function loadDonationLink() {
+    try {
+      return localStorage.getItem(DONATION_LINK_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function saveDonationLink(url) {
+    const cleaned = String(url || '').trim();
+    firebaseState.donationLink = cleaned;
+    try {
+      if (cleaned) localStorage.setItem(DONATION_LINK_KEY, cleaned);
+      else localStorage.removeItem(DONATION_LINK_KEY);
+    } catch {}
+  }
 
   function loadGoogleClientId() {
     try {
@@ -1519,6 +1707,252 @@
     updateGoogleSyncStatus();
   }
 
+  function updateFirebaseStatus(messageOverride = '') {
+    const statusEl = document.getElementById('firebase-status');
+    const countEl = document.getElementById('subscriber-count');
+    const userEl = document.getElementById('signed-in-user');
+    if (!statusEl || !countEl || !userEl) return;
+
+    countEl.textContent = firebaseState.subscriberCount == null ? '-' : String(firebaseState.subscriberCount);
+    userEl.textContent = firebaseState.user ? (firebaseState.user.email || firebaseState.user.displayName || firebaseState.user.uid) : 'None';
+
+    if (messageOverride) {
+      statusEl.className = 'diag-origin google-sync-status';
+      statusEl.innerHTML = messageOverride;
+      return;
+    }
+
+    if (!firebaseState.config) {
+      statusEl.className = 'diag-origin google-sync-status warn';
+      statusEl.innerHTML = `<strong>Firebase is not configured yet.</strong><br>Paste the Firebase web config JSON from the Firebase console, save it, then sign in with Google.`;
+      return;
+    }
+
+    if (!firebaseState.initialized) {
+      statusEl.className = 'diag-origin google-sync-status';
+      statusEl.innerHTML = `Firebase config saved. Initialize the lean MVP by signing in with Google.`;
+      return;
+    }
+
+    if (!firebaseState.user) {
+      statusEl.className = 'diag-origin google-sync-status';
+      statusEl.innerHTML = `Firebase is ready. Sign in to create a subscriber profile, count users, and sync subscriptions through Firestore.`;
+      return;
+    }
+
+    statusEl.className = 'diag-origin google-sync-status';
+    statusEl.innerHTML = `<strong>Firebase cloud sync is active.</strong> Signed in as <code>${escapeHtml(firebaseState.user.email || firebaseState.user.uid)}</code>. Subscription changes will sync to Firestore.`;
+  }
+
+  function ensureFirebaseConfig() {
+    if (!firebaseState.config || typeof firebaseState.config !== 'object') {
+      throw new Error('Save a Firebase web config first.');
+    }
+    return firebaseState.config;
+  }
+
+  function initFirebaseIfNeeded() {
+    if (firebaseState.initialized) return;
+    if (!(window.firebase && firebase.apps)) {
+      throw new Error('Firebase libraries are not available.');
+    }
+
+    const config = ensureFirebaseConfig();
+    const appName = 'thenewspaperguy-app';
+    const existing = firebase.apps.find((app) => app.name === appName);
+    firebaseState.app = existing || firebase.initializeApp(config, appName);
+    firebaseState.auth = firebaseState.app.auth();
+    firebaseState.db = firebaseState.app.firestore();
+    firebaseState.initialized = true;
+
+    firebaseState.auth.onAuthStateChanged(async (user) => {
+      firebaseState.user = user || null;
+      updateFirebaseStatus();
+      if (user) {
+        try {
+          await ensureSubscriberRecord(user);
+          await refreshSubscriberCount();
+        } catch (error) {
+          updateFirebaseStatus(`<strong>Firebase auth is connected, but Firestore setup failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+        }
+      }
+    });
+  }
+
+  async function ensureSubscriberRecord(user) {
+    const userRef = firebaseState.db.collection('users').doc(user.uid);
+    const statsRef = firebaseState.db.doc(FIRESTORE_STATS_DOC);
+    await firebaseState.db.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      const statsSnap = await tx.get(statsRef);
+      const now = new Date().toISOString();
+
+      if (!userSnap.exists) {
+        const stats = statsSnap.exists ? (statsSnap.data() || {}) : {};
+        const currentCount = Number.isFinite(stats.subscriberCount) ? stats.subscriberCount : 0;
+        tx.set(userRef, {
+          email: user.email || '',
+          displayName: user.displayName || '',
+          createdAt: now,
+          lastActiveAt: now,
+          feedCount: feeds.length,
+          cloudSyncEnabled: true,
+        }, { merge: true });
+        tx.set(statsRef, {
+          subscriberCount: currentCount + 1,
+          updatedAt: now,
+        }, { merge: true });
+        firebaseState.subscriberCount = currentCount + 1;
+      } else {
+        tx.set(userRef, {
+          email: user.email || '',
+          displayName: user.displayName || '',
+          lastActiveAt: now,
+          feedCount: feeds.length,
+          cloudSyncEnabled: true,
+        }, { merge: true });
+        if (statsSnap.exists) {
+          const stats = statsSnap.data() || {};
+          firebaseState.subscriberCount = Number.isFinite(stats.subscriberCount) ? stats.subscriberCount : firebaseState.subscriberCount;
+        }
+      }
+    });
+    updateFirebaseStatus();
+  }
+
+  async function refreshSubscriberCount() {
+    if (!firebaseState.db) return;
+    const statsSnap = await firebaseState.db.doc(FIRESTORE_STATS_DOC).get();
+    if (statsSnap.exists) {
+      const data = statsSnap.data() || {};
+      firebaseState.subscriberCount = Number.isFinite(data.subscriberCount) ? data.subscriberCount : firebaseState.subscriberCount;
+      updateFirebaseStatus();
+    }
+  }
+
+  async function saveCloudProfile() {
+    if (!firebaseState.user) throw new Error('Sign in with Google first.');
+    if (firebaseState.syncInFlight) return;
+    firebaseState.syncInFlight = true;
+    updateFirebaseStatus('Saving subscriptions to Firestore…');
+    try {
+      const now = new Date().toISOString();
+      await firebaseState.db.collection('users').doc(firebaseState.user.uid).set({
+        email: firebaseState.user.email || '',
+        displayName: firebaseState.user.displayName || '',
+        lastActiveAt: now,
+        feedCount: feeds.length,
+        feeds,
+        donationLink: firebaseState.donationLink || '',
+      }, { merge: true });
+      updateFirebaseStatus(`<strong>Cloud profile saved.</strong><br>Firestore is now storing the latest subscription set for <code>${escapeHtml(firebaseState.user.email || firebaseState.user.uid)}</code>.`);
+      toast('Saved cloud profile');
+    } finally {
+      firebaseState.syncInFlight = false;
+    }
+  }
+
+  async function loadCloudProfile() {
+    if (!firebaseState.user) throw new Error('Sign in with Google first.');
+    updateFirebaseStatus('Loading subscriptions from Firestore…');
+    const snap = await firebaseState.db.collection('users').doc(firebaseState.user.uid).get();
+    const data = snap.exists ? (snap.data() || {}) : {};
+    if (!Array.isArray(data.feeds) || !data.feeds.length) {
+      updateFirebaseStatus('Signed in, but no Firestore profile exists yet. Save cloud profile after your first changes.');
+      toast('No cloud profile found yet', true);
+      return;
+    }
+
+    const imported = data.feeds.map(normalizeFeedRecord).filter(Boolean);
+    const seen = new Set();
+    feeds = imported.filter((feed) => {
+      if (seen.has(feed.url)) return false;
+      seen.add(feed.url);
+      return true;
+    });
+    saveFeeds();
+    renderConfigure();
+    renderHome();
+    updateFirebaseStatus();
+    toast(`Loaded ${feeds.length} cloud subscription${feeds.length === 1 ? '' : 's'}`);
+  }
+
+  function scheduleCloudAutosave() {
+    if (!firebaseState.user || !firebaseState.db) return;
+    if (firebaseState.syncTimer) clearTimeout(firebaseState.syncTimer);
+    firebaseState.syncTimer = setTimeout(() => {
+      saveCloudProfile().catch((error) => {
+        updateFirebaseStatus(`<strong>Firestore autosave failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+      });
+    }, 1000);
+  }
+
+  async function signInWithFirebaseGoogle() {
+    try {
+      initFirebaseIfNeeded();
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('email');
+      await firebaseState.auth.signInWithPopup(provider);
+      await refreshSubscriberCount();
+      updateFirebaseStatus();
+      toast('Signed in with Google');
+    } catch (error) {
+      updateFirebaseStatus(`<strong>Firebase sign-in failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+      toast(error.message || 'Firebase sign-in failed', true);
+    }
+  }
+
+  async function signOutFirebaseUser() {
+    try {
+      if (firebaseState.auth) await firebaseState.auth.signOut();
+      firebaseState.user = null;
+      updateFirebaseStatus();
+      toast('Signed out');
+    } catch (error) {
+      toast(error.message || 'Sign out failed', true);
+    }
+  }
+
+  function saveFirebaseConfigFromInput() {
+    try {
+      const raw = document.getElementById('firebase-config-input').value.trim();
+      if (!raw) {
+        saveFirebaseWebConfig(null);
+        firebaseState.initialized = false;
+        firebaseState.app = null;
+        firebaseState.auth = null;
+        firebaseState.db = null;
+        firebaseState.user = null;
+        updateFirebaseStatus();
+        toast('Firebase config cleared');
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      ['apiKey', 'authDomain', 'projectId', 'appId'].forEach((key) => {
+        if (!parsed[key]) throw new Error(`Missing Firebase config field: ${key}`);
+      });
+      saveFirebaseWebConfig(parsed);
+      firebaseState.initialized = false;
+      firebaseState.app = null;
+      firebaseState.auth = null;
+      firebaseState.db = null;
+      firebaseState.user = null;
+      updateFirebaseStatus();
+      toast('Firebase config saved');
+    } catch (error) {
+      toast(error.message || 'Invalid Firebase config', true);
+    }
+  }
+
+  function openDonationLink() {
+    const url = String(firebaseState.donationLink || '').trim();
+    if (!url) {
+      toast('Save a donation link first', true);
+      return;
+    }
+    window.open(url, '_blank', 'noopener');
+  }
+
   function onGoogleConnected() {
     googleSyncState.connected = true;
     updateGoogleSyncStatus();
@@ -1579,6 +2013,7 @@
     updateCounts();
     updateStorageStatus();
     scheduleDriveAutosave();
+    scheduleCloudAutosave();
   }
 
   function exportFeeds() {
@@ -2737,6 +3172,8 @@
   document.getElementById('import-feeds-btn').addEventListener('click', () => document.getElementById('import-feeds-input').click());
   document.getElementById('import-feeds-input').addEventListener('change', importFeedsFromFile);
   document.getElementById('google-client-id-input').value = googleSyncState.clientId;
+  document.getElementById('firebase-config-input').value = firebaseState.config ? JSON.stringify(firebaseState.config, null, 2) : '';
+  document.getElementById('donation-link-input').value = firebaseState.donationLink || '';
   document.getElementById('save-google-client-id-btn').addEventListener('click', () => {
     const value = document.getElementById('google-client-id-input').value;
     saveGoogleClientId(value);
@@ -2748,6 +3185,24 @@
   document.getElementById('google-load-btn').addEventListener('click', loadFromGoogleDrive);
   document.getElementById('google-save-btn').addEventListener('click', saveToGoogleDrive);
   document.getElementById('google-signout-btn').addEventListener('click', disconnectGoogleDrive);
+  document.getElementById('save-firebase-config-btn').addEventListener('click', saveFirebaseConfigFromInput);
+  document.getElementById('firebase-connect-btn').addEventListener('click', signInWithFirebaseGoogle);
+  document.getElementById('firebase-load-btn').addEventListener('click', () => loadCloudProfile().catch((error) => {
+    updateFirebaseStatus(`<strong>Load cloud profile failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+    toast(error.message || 'Load cloud profile failed', true);
+  }));
+  document.getElementById('firebase-save-btn').addEventListener('click', () => saveCloudProfile().catch((error) => {
+    updateFirebaseStatus(`<strong>Save cloud profile failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+    toast(error.message || 'Save cloud profile failed', true);
+  }));
+  document.getElementById('firebase-signout-btn').addEventListener('click', signOutFirebaseUser);
+  document.getElementById('save-donation-link-btn').addEventListener('click', () => {
+    const url = document.getElementById('donation-link-input').value;
+    saveDonationLink(url);
+    updateFirebaseStatus();
+    toast(firebaseState.donationLink ? 'Donation link saved' : 'Donation link cleared');
+  });
+  document.getElementById('support-btn').addEventListener('click', openDonationLink);
   document.getElementById('discover-input').addEventListener('keydown', (e) => {
     // Ctrl/Cmd + Enter submits from the multi-line textarea
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -2801,6 +3256,7 @@
   renderOriginBanner();
   updateStorageStatus();
   updateGoogleSyncStatus();
+  updateFirebaseStatus();
   setupArticleModal();
 </script>
 

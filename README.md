@@ -48,3 +48,54 @@ Notes:
 - The app stores subscriptions in the signed-in user's private Drive `appDataFolder`.
 - The synced file name is `thenewspaperguy-subscriptions.json`.
 - Local browser storage still works as a fallback and local cache.
+
+## Lean MVP with Firebase
+The app also includes a lean MVP layer for:
+- Google sign-in through Firebase Auth
+- Firestore-backed cloud subscription profiles
+- Subscriber counting
+- Donation link support
+
+### Morning setup checklist
+1. Create a Firebase project.
+2. Add a web app to the Firebase project.
+3. Enable `Authentication -> Sign-in method -> Google`.
+4. Create a Firestore database.
+5. Deploy this site with Firebase Hosting.
+6. Copy the Firebase web config JSON into the app's `Firebase MVP` panel in Configure.
+7. Save your donation URL in the donation field.
+
+### Firebase Hosting deploy
+1. Install the Firebase CLI:
+   ```bash
+   npm install -g firebase-tools
+   ```
+2. Log in:
+   ```bash
+   firebase login
+   ```
+3. Replace `YOUR_FIREBASE_PROJECT_ID` inside `.firebaserc.template`, then rename it to `.firebaserc`.
+4. Deploy:
+   ```bash
+   firebase deploy
+   ```
+
+### Firebase web config fields
+Use the object from `Project settings -> Your apps -> SDK setup and configuration`. The app expects JSON with at least:
+- `apiKey`
+- `authDomain`
+- `projectId`
+- `appId`
+
+### Firestore data used by the app
+- `users/{uid}`
+  Stores user profile metadata, feed count, and the user's cloud-synced feeds.
+- `global/metrics`
+  Stores a simple `subscriberCount` field for MVP tracking.
+
+### Donations
+The MVP donation support is a configurable external link. Save a Stripe Payment Link, Buy Me a Coffee URL, Ko-fi URL, or similar into the donation field in the app.
+
+### Notes
+- This is an MVP and does not yet include hardened Firestore security rules or Stripe webhook automation.
+- Google Drive sync remains available as a user-owned backup path.

@@ -1666,6 +1666,54 @@
         </div>
       </div>
 
+      <div class="section-label">Starter Set Workspace</div>
+      <h3 class="firebase-title" style="margin-bottom:18px;">Edit the exact feed mix you want new readers to receive</h3>
+
+      <div class="add-form">
+        <input type="url" id="feed-url-input-admin" placeholder="https://example.com/feed.xml" autocomplete="off">
+        <button id="add-feed-btn-admin">Add Feed</button>
+      </div>
+
+      <div class="storage-panel">
+        <div class="section-label">Browser Storage</div>
+        <h3 class="storage-title">Work on the starter edition locally</h3>
+        <p class="storage-copy">These tools act on the same current feed list shown in Configure, so you can curate the edition here and then save it as the starter set above.</p>
+        <div class="diag-origin storage-status" id="storage-status-admin"></div>
+        <div class="storage-actions">
+          <button class="storage-btn" id="export-feeds-btn-admin">Export Subscriptions</button>
+          <button class="storage-btn secondary" id="import-feeds-btn-admin">Import Backup</button>
+          <button class="storage-btn secondary" id="reset-starter-btn-admin">Reset To Starter Set</button>
+          <input class="storage-input" type="file" id="import-feeds-input-admin" accept="application/json,.json">
+        </div>
+        <div class="storage-help">Use this workspace to test and curate the feed set, then save it as the new starter edition.</div>
+      </div>
+
+      <div class="discover">
+        <div class="section-label">Discover by Interest</div>
+        <h3 class="discover-title">Find feeds for the starter edition</h3>
+        <p class="discover-intro">Search for topics and test candidate feeds without leaving the Admin tab.</p>
+        <div class="discover-form">
+          <textarea id="discover-input-admin" rows="2" placeholder="e.g. cricket, artificial intelligence, formula 1, crypto markets, climate policy"></textarea>
+          <button id="discover-btn-admin">Search &amp; Test</button>
+        </div>
+        <div class="discover-status" id="discover-status-admin"></div>
+        <div class="discover-results" id="discover-results-admin"></div>
+      </div>
+
+      <div class="feed-list" id="feed-list-admin"></div>
+
+      <div class="diagnostics">
+        <div class="section-label">Connection Diagnostics</div>
+        <h3 class="diag-title">Test the starter feeds</h3>
+        <p class="diag-intro">Run diagnostics here before saving the starter edition so you know the selected feeds render reliably.</p>
+        <div class="diag-origin" id="diag-origin-admin"></div>
+        <div class="diag-controls">
+          <button class="diag-run-btn" id="diag-run-btn-admin">▶ Run diagnostics</button>
+          <span class="diag-status" id="diag-status-admin"></span>
+        </div>
+        <div class="diag-output" id="diag-output-admin"></div>
+      </div>
+
       <div class="admin-dashboard">
         <div class="section-label">Subscriber Dashboard</div>
         <div class="admin-dashboard-header">
@@ -1998,18 +2046,20 @@
   }
 
   function updateStorageStatus() {
-    const el = document.getElementById('storage-status');
-    if (!el) return;
-
     const savedCount = Array.isArray(feeds) ? feeds.length : 0;
-    if (!storageAvailable()) {
-      el.className = 'diag-origin storage-status warn';
-      el.innerHTML = `<strong>Browser storage is unavailable.</strong><br>Your subscriptions will only last for the current session unless you export a backup JSON file.`;
-      return;
-    }
+    ['storage-status', 'storage-status-admin'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
 
-    el.className = 'diag-origin storage-status';
-    el.innerHTML = `Subscriptions are being stored in <code>localStorage</code> for <code>${escapeHtml(location.origin)}</code>. Current saved feeds: <strong>${savedCount}</strong>.`;
+      if (!storageAvailable()) {
+        el.className = 'diag-origin storage-status warn';
+        el.innerHTML = `<strong>Browser storage is unavailable.</strong><br>Your subscriptions will only last for the current session unless you export a backup JSON file.`;
+        return;
+      }
+
+      el.className = 'diag-origin storage-status';
+      el.innerHTML = `Subscriptions are being stored in <code>localStorage</code> for <code>${escapeHtml(location.origin)}</code>. Current saved feeds: <strong>${savedCount}</strong>.`;
+    });
   }
 
   function updateGoogleSyncStatus(messageOverride = '') {
@@ -3074,11 +3124,13 @@
     return candidates;
   }
 
-  async function runDiscover() {
-    const input = document.getElementById('discover-input');
-    const btn = document.getElementById('discover-btn');
-    const statusEl = document.getElementById('discover-status');
-    const results = document.getElementById('discover-results');
+  async function runDiscover(prefix = '') {
+    const suffix = prefix ? `-${prefix}` : '';
+    const input = document.getElementById(`discover-input${suffix}`);
+    const btn = document.getElementById(`discover-btn${suffix}`);
+    const statusEl = document.getElementById(`discover-status${suffix}`);
+    const results = document.getElementById(`discover-results${suffix}`);
+    if (!input || !btn || !statusEl || !results) return;
 
     const raw = input.value.trim();
     if (!raw) {
@@ -3436,8 +3488,9 @@
   }
 
   // ======= RENDER CONFIGURE =======
-  function renderConfigure() {
-    const list = document.getElementById('feed-list');
+  function renderFeedList(listId) {
+    const list = document.getElementById(listId);
+    if (!list) return;
     list.innerHTML = '';
 
     if (feeds.length === 0) {
@@ -3535,8 +3588,11 @@
         btn.addEventListener('click', () => removeFeed(parseInt(btn.dataset.idx, 10)));
       });
     }
+  }
 
-    renderSuggestions();
+  function renderConfigure() {
+    renderFeedList('feed-list');
+    renderFeedList('feed-list-admin');
   }
 
   function startRename(idx, el) {
@@ -3603,6 +3659,10 @@
 
   // ======= ADD / REMOVE =======
   async function addFeed(url, presetName = null, presetCategory = null) {
+    return addFeedWithControls(url, presetName, presetCategory, 'add-feed-btn', 'feed-url-input');
+  }
+
+  async function addFeedWithControls(url, presetName = null, presetCategory = null, buttonId = 'add-feed-btn', inputId = 'feed-url-input') {
     url = url.trim();
     if (!url) return;
     if (!/^https?:\/\//i.test(url)) {
@@ -3614,7 +3674,7 @@
       return;
     }
 
-    const btn = document.getElementById('add-feed-btn');
+    const btn = document.getElementById(buttonId);
     btn.disabled = true;
     btn.textContent = 'Checking…';
 
@@ -3625,7 +3685,8 @@
       const column = COLUMN_MAP[category] || 4;
       feeds.push({ url, name, category, column });
       saveFeeds();
-      document.getElementById('feed-url-input').value = '';
+      const input = document.getElementById(inputId);
+      if (input) input.value = '';
       renderConfigure();
       renderHome();
       toast('Added: ' + name);
@@ -3641,6 +3702,7 @@
     const [removed] = feeds.splice(idx, 1);
     saveFeeds();
     renderConfigure();
+    renderHome();
     toast('Removed: ' + removed.name);
   }
 
@@ -3680,15 +3742,17 @@
     }
   }
 
-  async function runDiagnostics() {
+  async function runDiagnostics(prefix = '') {
     if (feeds.length === 0) {
       toast('Add at least one feed first', true);
       return;
     }
 
-    const output = document.getElementById('diag-output');
-    const statusEl = document.getElementById('diag-status');
-    const btn = document.getElementById('diag-run-btn');
+    const suffix = prefix ? `-${prefix}` : '';
+    const output = document.getElementById(`diag-output${suffix}`);
+    const statusEl = document.getElementById(`diag-status${suffix}`);
+    const btn = document.getElementById(`diag-run-btn${suffix}`);
+    if (!output || !statusEl || !btn) return;
 
     btn.disabled = true;
     btn.textContent = '▶ Running…';
@@ -3773,10 +3837,16 @@
   }
 
   document.getElementById('add-feed-btn').addEventListener('click', () => {
-    addFeed(document.getElementById('feed-url-input').value);
+    addFeedWithControls(document.getElementById('feed-url-input').value, null, null, 'add-feed-btn', 'feed-url-input');
   });
   document.getElementById('feed-url-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') addFeed(e.target.value);
+    if (e.key === 'Enter') addFeedWithControls(e.target.value, null, null, 'add-feed-btn', 'feed-url-input');
+  });
+  document.getElementById('add-feed-btn-admin').addEventListener('click', () => {
+    addFeedWithControls(document.getElementById('feed-url-input-admin').value, null, null, 'add-feed-btn-admin', 'feed-url-input-admin');
+  });
+  document.getElementById('feed-url-input-admin').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addFeedWithControls(e.target.value, null, null, 'add-feed-btn-admin', 'feed-url-input-admin');
   });
   document.getElementById('refresh-btn').addEventListener('click', () => {
     if (!document.getElementById('page-home').classList.contains('page-hidden')) {
@@ -3787,12 +3857,18 @@
       renderHome();
     }
   });
-  document.getElementById('diag-run-btn').addEventListener('click', runDiagnostics);
-  document.getElementById('discover-btn').addEventListener('click', runDiscover);
+  document.getElementById('diag-run-btn').addEventListener('click', () => runDiagnostics());
+  document.getElementById('diag-run-btn-admin').addEventListener('click', () => runDiagnostics('admin'));
+  document.getElementById('discover-btn').addEventListener('click', () => runDiscover());
+  document.getElementById('discover-btn-admin').addEventListener('click', () => runDiscover('admin'));
   document.getElementById('export-feeds-btn').addEventListener('click', exportFeeds);
   document.getElementById('import-feeds-btn').addEventListener('click', () => document.getElementById('import-feeds-input').click());
   document.getElementById('import-feeds-input').addEventListener('change', importFeedsFromFile);
+  document.getElementById('export-feeds-btn-admin').addEventListener('click', exportFeeds);
+  document.getElementById('import-feeds-btn-admin').addEventListener('click', () => document.getElementById('import-feeds-input-admin').click());
+  document.getElementById('import-feeds-input-admin').addEventListener('change', importFeedsFromFile);
   document.getElementById('reset-starter-btn').addEventListener('click', resetFeedsToStarterSet);
+  document.getElementById('reset-starter-btn-admin').addEventListener('click', resetFeedsToStarterSet);
   document.getElementById('google-client-id-input').value = googleSyncState.clientId;
   document.getElementById('firebase-config-input').value = firebaseState.config ? JSON.stringify(firebaseState.config, null, 2) : '';
   document.getElementById('donation-link-input').value = firebaseState.donationLink || '';
@@ -3837,10 +3913,15 @@
   document.getElementById('load-starter-set-btn').addEventListener('click', resetFeedsToStarterSet);
   document.getElementById('support-btn').addEventListener('click', openDonationLink);
   document.getElementById('discover-input').addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + Enter submits from the multi-line textarea
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       runDiscover();
+    }
+  });
+  document.getElementById('discover-input-admin').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      runDiscover('admin');
     }
   });
 
@@ -3848,25 +3929,27 @@
   // corsproxy.io rejects requests from file:// and non-allowlisted origins.
   // Show a contextual banner in Diagnostics so the user knows what to expect.
   function renderOriginBanner() {
-    const el = document.getElementById('diag-origin');
-    if (!el) return;
     const proto = location.protocol;
     const host = location.hostname || '(none)';
     const isFile = proto === 'file:';
     const corsproxyAllowedHosts = ['localhost', '127.0.0.1', 'github.io', 'ngrok.io', 'trycloudflare.com'];
     const corsproxyOK = !isFile && corsproxyAllowedHosts.some(h => host === h || host.endsWith('.' + h));
 
-    if (isFile) {
-      el.className = 'diag-origin warn';
-      el.innerHTML = `<strong>Heads up — you're running this from <code>file://</code>.</strong><br>
-        That's fine for allorigins and codetabs, but <code>corsproxy.io</code> will reject requests from <code>file://</code> origins (their policy, updated Apr 2026). Expect it to fail in the diagnostics below — that's normal. The other three proxies are what actually carries the feeds.`;
-    } else if (!corsproxyOK) {
-      el.className = 'diag-origin';
-      el.innerHTML = `Origin: <code>${escapeHtml(proto + '//' + host)}</code>. <code>corsproxy.io</code> only allows localhost, github.io, ngrok.io, and a few other allowlisted domains — it will likely fail here. The other three proxies should still work.`;
-    } else {
-      el.className = 'diag-origin';
-      el.innerHTML = `Origin: <code>${escapeHtml(proto + '//' + host)}</code>. All four proxies should be reachable from this origin.`;
-    }
+    ['diag-origin', 'diag-origin-admin'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (isFile) {
+        el.className = 'diag-origin warn';
+        el.innerHTML = `<strong>Heads up — you're running this from <code>file://</code>.</strong><br>
+          That's fine for allorigins and codetabs, but <code>corsproxy.io</code> will reject requests from <code>file://</code> origins (their policy, updated Apr 2026). Expect it to fail in the diagnostics below — that's normal. The other three proxies are what actually carries the feeds.`;
+      } else if (!corsproxyOK) {
+        el.className = 'diag-origin';
+        el.innerHTML = `Origin: <code>${escapeHtml(proto + '//' + host)}</code>. <code>corsproxy.io</code> only allows localhost, github.io, ngrok.io, and a few other allowlisted domains — it will likely fail here. The other three proxies should still work.`;
+      } else {
+        el.className = 'diag-origin';
+        el.innerHTML = `Origin: <code>${escapeHtml(proto + '//' + host)}</code>. All four proxies should be reachable from this origin.`;
+      }
+    });
   }
 
   function setupArticleModal() {

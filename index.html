@@ -645,6 +645,90 @@
     font-weight: 600;
   }
 
+  .admin-dashboard {
+    margin: 0 0 40px;
+    padding: 22px 24px;
+    border: 1px solid var(--ink);
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  .admin-dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .admin-dashboard-copy {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+    max-width: 760px;
+  }
+
+  .admin-dashboard-status {
+    margin-bottom: 14px;
+  }
+
+  .admin-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .admin-subscriber-list {
+    border-top: 1px solid var(--soft-rule);
+  }
+
+  .admin-subscriber-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.5fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(120px, 0.8fr);
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--soft-rule);
+    align-items: center;
+  }
+
+  .admin-subscriber-row.header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 0;
+  }
+
+  .admin-subscriber-primary {
+    min-width: 0;
+  }
+
+  .admin-subscriber-email {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+
+  .admin-subscriber-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+  }
+
+  .admin-empty {
+    padding: 14px 0 2px;
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    color: var(--muted);
+  }
+
   .donation-row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -1452,6 +1536,23 @@
         <div class="storage-help">Leave the config field empty to fall back to the baked-in project settings for this app.</div>
       </div>
 
+      <div class="admin-dashboard">
+        <div class="section-label">Subscriber Dashboard</div>
+        <div class="admin-dashboard-header">
+          <h3 class="firebase-title" style="margin-bottom:0;">See the audience</h3>
+          <button class="storage-btn secondary" id="admin-refresh-btn">Refresh Dashboard</button>
+        </div>
+        <p class="admin-dashboard-copy">This view is only available to the admin account. It shows the current subscriber records stored in Firestore and a quick health check of recent activity.</p>
+        <div class="diag-origin admin-dashboard-status" id="admin-dashboard-status"></div>
+        <div class="admin-dashboard-grid">
+          <div class="firebase-stat">Subscribers<strong id="admin-total-subscribers">-</strong></div>
+          <div class="firebase-stat">Active Today<strong id="admin-active-today">-</strong></div>
+          <div class="firebase-stat">Average Feeds<strong id="admin-average-feeds">-</strong></div>
+          <div class="firebase-stat">Last Refresh<strong id="admin-last-refresh">-</strong></div>
+        </div>
+        <div class="admin-subscriber-list" id="admin-subscriber-list"></div>
+      </div>
+
       <div class="google-sync-panel">
         <div class="section-label">Google Drive Sync</div>
         <h3 class="google-sync-title">Optional backup system</h3>
@@ -1583,6 +1684,8 @@
     syncInFlight: false,
     subscriberCount: null,
     donationLink: loadDonationLink(),
+    adminUsers: [],
+    adminLoadedAt: '',
   };
 
   let feeds = loadFeeds();
@@ -1824,6 +1927,130 @@
     if (!isAdminUser() && adminTab && adminTab.classList.contains('active')) {
       switchTab('configure');
     }
+
+    updateAdminDashboard();
+  }
+
+  function formatAdminTimestamp(value) {
+    if (!value) return 'Never';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Unknown';
+    return parsed.toLocaleString();
+  }
+
+  function updateAdminDashboard(messageOverride = '') {
+    const statusEl = document.getElementById('admin-dashboard-status');
+    const listEl = document.getElementById('admin-subscriber-list');
+    const totalEl = document.getElementById('admin-total-subscribers');
+    const activeEl = document.getElementById('admin-active-today');
+    const averageEl = document.getElementById('admin-average-feeds');
+    const refreshEl = document.getElementById('admin-last-refresh');
+    if (!statusEl || !listEl || !totalEl || !activeEl || !averageEl || !refreshEl) return;
+
+    if (!firebaseState.user) {
+      statusEl.className = 'diag-origin admin-dashboard-status';
+      statusEl.innerHTML = 'Sign in with the admin Google account to view subscriber records.';
+      totalEl.textContent = '-';
+      activeEl.textContent = '-';
+      averageEl.textContent = '-';
+      refreshEl.textContent = '-';
+      listEl.innerHTML = '<div class="admin-empty">No dashboard data loaded.</div>';
+      return;
+    }
+
+    if (!isAdminUser()) {
+      statusEl.className = 'diag-origin admin-dashboard-status warn';
+      statusEl.innerHTML = 'This dashboard is reserved for the admin account.';
+      totalEl.textContent = '-';
+      activeEl.textContent = '-';
+      averageEl.textContent = '-';
+      refreshEl.textContent = '-';
+      listEl.innerHTML = '<div class="admin-empty">Admin access required.</div>';
+      return;
+    }
+
+    if (messageOverride) {
+      statusEl.className = 'diag-origin admin-dashboard-status';
+      statusEl.innerHTML = messageOverride;
+    } else {
+      statusEl.className = 'diag-origin admin-dashboard-status';
+      statusEl.innerHTML = firebaseState.adminLoadedAt
+        ? `Admin dashboard loaded from Firestore. Last refresh: <strong>${escapeHtml(formatAdminTimestamp(firebaseState.adminLoadedAt))}</strong>.`
+        : 'Admin dashboard is ready. Refresh to pull the latest subscriber records.';
+    }
+
+    const records = Array.isArray(firebaseState.adminUsers) ? firebaseState.adminUsers : [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const activeToday = records.filter((record) => {
+      const parsed = new Date(record.lastActiveAt || '');
+      return !Number.isNaN(parsed.getTime()) && parsed >= today;
+    }).length;
+    const averageFeeds = records.length
+      ? (records.reduce((sum, record) => sum + (Number(record.feedCount) || 0), 0) / records.length).toFixed(1)
+      : '-';
+
+    totalEl.textContent = String(records.length);
+    activeEl.textContent = String(activeToday);
+    averageEl.textContent = String(averageFeeds);
+    refreshEl.textContent = firebaseState.adminLoadedAt ? formatAdminTimestamp(firebaseState.adminLoadedAt) : '-';
+
+    if (!records.length) {
+      listEl.innerHTML = '<div class="admin-empty">No subscriber records found yet.</div>';
+      return;
+    }
+
+    listEl.innerHTML = `
+      <div class="admin-subscriber-row header">
+        <div>Subscriber</div>
+        <div>Feeds</div>
+        <div>Last Active</div>
+        <div>Cloud Sync</div>
+      </div>
+      ${records.map((record) => `
+        <div class="admin-subscriber-row">
+          <div class="admin-subscriber-primary">
+            <div class="admin-subscriber-email">${escapeHtml(record.email || record.displayName || record.uid || 'Unknown user')}</div>
+            <div class="admin-subscriber-meta">UID: ${escapeHtml(record.uid || 'n/a')}</div>
+          </div>
+          <div>${escapeHtml(String(Number(record.feedCount) || 0))}</div>
+          <div>${escapeHtml(formatAdminTimestamp(record.lastActiveAt || record.createdAt || ''))}</div>
+          <div>${record.cloudSyncEnabled ? 'Enabled' : 'Off'}</div>
+        </div>
+      `).join('')}`;
+  }
+
+  async function loadAdminDashboard() {
+    const statusEl = document.getElementById('admin-dashboard-status');
+    if (!statusEl) return;
+
+    if (!firebaseState.user) {
+      updateAdminDashboard('Sign in with the admin Google account to load the dashboard.');
+      return;
+    }
+
+    if (!isAdminUser()) {
+      updateAdminDashboard('This dashboard can only be loaded by the admin account.');
+      return;
+    }
+
+    initFirebaseIfNeeded();
+    updateAdminDashboard('Loading subscriber records from Firestore…');
+    const snapshot = await firebaseState.db.collection('users').orderBy('lastActiveAt', 'desc').limit(100).get();
+    firebaseState.adminUsers = snapshot.docs.map((doc) => {
+      const data = doc.data() || {};
+      return {
+        uid: doc.id,
+        email: data.email || '',
+        displayName: data.displayName || '',
+        feedCount: Number(data.feedCount) || 0,
+        createdAt: data.createdAt || '',
+        lastActiveAt: data.lastActiveAt || '',
+        cloudSyncEnabled: Boolean(data.cloudSyncEnabled),
+      };
+    });
+    firebaseState.adminLoadedAt = new Date().toISOString();
+    updateAdminDashboard();
   }
 
   function updateFirebaseStatus(messageOverride = '') {
@@ -1900,8 +2127,12 @@
         try {
           await ensureSubscriberRecord(user);
           await refreshSubscriberCount();
+          if (isAdminUser(user)) await loadAdminDashboard();
         } catch (error) {
           updateFirebaseStatus(`<strong>Firebase auth is connected, but Firestore setup failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+          if (isAdminUser(user)) {
+            updateAdminDashboard(`<strong>Admin dashboard failed to load.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+          }
         }
       }
     });
@@ -1974,6 +2205,7 @@
         donationLink: firebaseState.donationLink || '',
       }, { merge: true });
       updateFirebaseStatus(`<strong>Cloud profile saved.</strong><br>Firestore is now storing the latest subscription set for <code>${escapeHtml(firebaseState.user.email || firebaseState.user.uid)}</code>.`);
+      if (isAdminUser()) await loadAdminDashboard();
       toast('Saved cloud profile');
     } finally {
       firebaseState.syncInFlight = false;
@@ -2002,6 +2234,7 @@
     renderConfigure();
     renderHome();
     updateFirebaseStatus();
+    if (isAdminUser()) await loadAdminDashboard();
     toast(`Loaded ${feeds.length} cloud subscription${feeds.length === 1 ? '' : 's'}`);
   }
 
@@ -2461,6 +2694,12 @@
     document.getElementById('page-home').classList.toggle('page-hidden', target !== 'home');
     document.getElementById('page-configure').classList.toggle('page-hidden', target !== 'configure');
     document.getElementById('page-admin').classList.toggle('page-hidden', target !== 'admin');
+    if (target === 'admin') {
+      loadAdminDashboard().catch((error) => {
+        updateAdminDashboard(`<strong>Admin dashboard failed to load.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+        toast(error.message || 'Admin dashboard failed to load', true);
+      });
+    }
   }
 
   document.querySelectorAll('.tab').forEach(tab => {
@@ -3337,6 +3576,10 @@
     updateFirebaseStatus();
     toast(firebaseState.donationLink ? 'Donation link saved' : 'Donation link cleared');
   });
+  document.getElementById('admin-refresh-btn').addEventListener('click', () => loadAdminDashboard().catch((error) => {
+    updateAdminDashboard(`<strong>Admin dashboard failed to load.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+    toast(error.message || 'Admin dashboard failed to load', true);
+  }));
   document.getElementById('support-btn').addEventListener('click', openDonationLink);
   document.getElementById('discover-input').addEventListener('keydown', (e) => {
     // Ctrl/Cmd + Enter submits from the multi-line textarea
@@ -3393,6 +3636,7 @@
   updateStorageStatus();
   updateGoogleSyncStatus();
   updateFirebaseStatus();
+  updateAdminDashboard();
   updateSupportButtonState();
   setupArticleModal();
 </script>

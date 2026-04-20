@@ -1777,6 +1777,15 @@
   const FIRESTORE_STATS_DOC = 'global/metrics';
   const FIRESTORE_APP_CONFIG_DOC = 'global/appConfig';
 
+  function shouldUseAppProxy() {
+    if (location.protocol === 'file:') return false;
+    const host = String(location.hostname || '').toLowerCase();
+    return host === 'localhost'
+      || host === '127.0.0.1'
+      || host.endsWith('.web.app')
+      || host.endsWith('.firebaseapp.com');
+  }
+
   // Category order and column mapping
   const CATEGORY_ORDER = ['Global', 'USA', 'Finance', 'India'];
   const COLUMN_MAP = { 'Global': 1, 'USA': 1, 'Finance': 2, 'India': 4 };
@@ -3017,13 +3026,36 @@
   // Try multiple CORS proxies in sequence. Each one has a handler to extract raw XML.
   // If one is down or rate-limited, we fall through to the next.
   // CORS proxies tried in order. Reordered based on real-world reliability:
-  //   1. allorigins-raw  — works from file:// and any origin, no allowlist. Primary.
-  //   2. codetabs        — very reliable for Google News specifically.
-  //   3. allorigins-get  — JSON-wrapped fallback if /raw ever breaks.
-  //   4. corsproxy.io    — ONLY works from localhost/github.io/ngrok.io and a few
+  //   1. app-proxy       — private Firebase-hosted feed proxy, when available.
+  //   2. allorigins-raw  — works from file:// and many origins. Fallback only.
+  //   3. codetabs        — very reliable for Google News specifically.
+  //   4. allorigins-get  — JSON-wrapped fallback if /raw ever breaks.
+  //   5. corsproxy.io    — ONLY works from localhost/github.io/ngrok.io and a few
   //                        other allowlisted domains per their ToS (Apr 2026).
   //                        Will fail silently from file:// — kept last.
   const PROXIES = [
+    ...(shouldUseAppProxy() ? [{
+      name: 'app-proxy',
+      fetchFeed: async (url) => {
+        const response = await fetch(`/api/feed?url=${encodeURIComponent(url)}`, { cache: 'no-store' });
+        if (!response.ok) {
+          let message = `HTTP ${response.status}`;
+          try {
+            const payload = await response.json();
+            if (payload && payload.error) message = payload.error;
+          } catch {}
+          throw new Error(message);
+        }
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.items)) {
+          throw new Error('Invalid app proxy payload');
+        }
+        return {
+          title: payload.title || 'Untitled',
+          items: payload.items.slice(0, MAX_ITEMS_PER_FEED),
+        };
+      }
+    }] : []),
     {
       name: 'codetabs',
       build: (url) => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(url),
@@ -3271,6 +3303,9 @@
     
     for (const proxy of PROXIES) {
       try {
+        if (typeof proxy.fetchFeed === 'function') {
+          return await proxy.fetchFeed(url);
+        }
         const res = await fetch(proxy.build(url), { cache: 'no-store' });
         if (!res.ok) {
           errors.push(proxy.name + ':' + res.status);
@@ -3731,6 +3766,10 @@
   async function testSingle(proxy, url) {
     const start = performance.now();
     try {
+      if (typeof proxy.fetchFeed === 'function') {
+        const parsed = await proxy.fetchFeed(url);
+        return { ok: true, ms: Math.round(performance.now() - start), items: parsed.items.length, title: parsed.title };
+      }
       const res = await fetch(proxy.build(url), { cache: 'no-store' });
       if (!res.ok) return { ok: false, ms: Math.round(performance.now() - start), err: 'HTTP ' + res.status };
       const xml = await proxy.extract(res);

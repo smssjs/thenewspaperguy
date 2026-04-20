@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "source": "functions"
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
@@ -18,8 +21,18 @@
     ],
     "ignore": [
       "firebase.json",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "README.md",
+      "functions/**",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/feed",
+        "function": "feedProxy"
+      }
     ],
     "cleanUrls": true
   }

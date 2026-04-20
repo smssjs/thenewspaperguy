@@ -425,6 +425,79 @@
 
   .add-form button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .storage-panel {
+    margin: 0 0 40px;
+    padding: 22px 24px;
+    border: 1px solid var(--ink);
+    background: rgba(0, 0, 0, 0.015);
+  }
+
+  .storage-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-style: italic;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+    margin-bottom: 10px;
+  }
+
+  .storage-copy {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    max-width: 680px;
+  }
+
+  .storage-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .storage-btn {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 12px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .storage-btn:hover { background: var(--accent); }
+
+  .storage-btn.secondary {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+  }
+
+  .storage-btn.secondary:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .storage-input {
+    display: none;
+  }
+
+  .storage-status {
+    margin-bottom: 12px;
+  }
+
+  .storage-help {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    line-height: 1.7;
+  }
+
   /* Discover by Interest */
   .discover {
     margin: 40px 0;
@@ -1100,6 +1173,19 @@
         <button id="add-feed-btn">Add Feed</button>
       </div>
 
+      <div class="storage-panel">
+        <div class="section-label">Browser Storage</div>
+        <h3 class="storage-title">Keep your subscriptions</h3>
+        <p class="storage-copy">Feeds are auto-saved in this browser. If your browser clears site data, private mode is enabled, or you switch devices, export a backup and import it later.</p>
+        <div class="diag-origin storage-status" id="storage-status"></div>
+        <div class="storage-actions">
+          <button class="storage-btn" id="export-feeds-btn">Export Subscriptions</button>
+          <button class="storage-btn secondary" id="import-feeds-btn">Import Backup</button>
+          <input class="storage-input" type="file" id="import-feeds-input" accept="application/json,.json">
+        </div>
+        <div class="storage-help">Backups are plain JSON files containing your configured feed names, URLs, categories, columns, and hidden-state settings.</div>
+      </div>
+
       <div class="discover">
         <div class="section-label">Discover by Interest</div>
         <h3 class="discover-title">Tell us what you want to read</h3>
@@ -1212,6 +1298,52 @@
 
   let feeds = loadFeeds();
 
+  function storageAvailable() {
+    try {
+      const probe = STORAGE_KEY + '-probe';
+      localStorage.setItem(probe, 'ok');
+      localStorage.removeItem(probe);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function normalizeFeedRecord(feed) {
+    if (!feed || typeof feed !== 'object') return null;
+    const url = String(feed.url || '').trim();
+    if (!url) return null;
+
+    const name = String(feed.name || url).trim() || url;
+    const category = feed.category || categorize(name, url);
+    const column = Number.isInteger(feed.column) && feed.column >= 1 && feed.column <= 4
+      ? feed.column
+      : (COLUMN_MAP[category] || 4);
+
+    return {
+      name,
+      url,
+      category,
+      column,
+      hidden: Boolean(feed.hidden),
+    };
+  }
+
+  function updateStorageStatus() {
+    const el = document.getElementById('storage-status');
+    if (!el) return;
+
+    const savedCount = Array.isArray(feeds) ? feeds.length : 0;
+    if (!storageAvailable()) {
+      el.className = 'diag-origin storage-status warn';
+      el.innerHTML = `<strong>Browser storage is unavailable.</strong><br>Your subscriptions will only last for the current session unless you export a backup JSON file.`;
+      return;
+    }
+
+    el.className = 'diag-origin storage-status';
+    el.innerHTML = `Subscriptions are being stored in <code>localStorage</code> for <code>${escapeHtml(location.origin)}</code>. Current saved feeds: <strong>${savedCount}</strong>.`;
+  }
+
   // Storage key bumped to v3 because the feed object shape now includes `category`.
   // Old v2 data without categories will be auto-backfilled via categorize() on load.
   function loadFeeds() {
@@ -1219,6 +1351,7 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Invalid saved feed payload');
         // Backfill missing categories and column assignments and hidden flag
         let changed = false;
         parsed.forEach(f => {
@@ -1252,6 +1385,55 @@
   function saveFeeds() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(feeds)); } catch {}
     updateCounts();
+    updateStorageStatus();
+  }
+
+  function exportFeeds() {
+    try {
+      const payload = JSON.stringify(feeds, null, 2);
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'thenewspaperguy-subscriptions.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast('Subscriptions exported');
+    } catch {
+      toast('Export failed', true);
+    }
+  }
+
+  async function importFeedsFromFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) throw new Error('Backup must be a JSON array');
+
+      const imported = parsed.map(normalizeFeedRecord).filter(Boolean);
+      if (!imported.length) throw new Error('No valid feeds found in backup');
+
+      const seen = new Set();
+      feeds = imported.filter((feed) => {
+        if (seen.has(feed.url)) return false;
+        seen.add(feed.url);
+        return true;
+      });
+
+      saveFeeds();
+      renderConfigure();
+      renderHome();
+      toast(`Imported ${feeds.length} subscription${feeds.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      toast(error.message || 'Import failed', true);
+    } finally {
+      event.target.value = '';
+    }
   }
 
   // ======= DATE =======
@@ -2123,6 +2305,9 @@
   });
   document.getElementById('diag-run-btn').addEventListener('click', runDiagnostics);
   document.getElementById('discover-btn').addEventListener('click', runDiscover);
+  document.getElementById('export-feeds-btn').addEventListener('click', exportFeeds);
+  document.getElementById('import-feeds-btn').addEventListener('click', () => document.getElementById('import-feeds-input').click());
+  document.getElementById('import-feeds-input').addEventListener('change', importFeedsFromFile);
   document.getElementById('discover-input').addEventListener('keydown', (e) => {
     // Ctrl/Cmd + Enter submits from the multi-line textarea
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -2174,6 +2359,7 @@
   renderHome();
   renderConfigure();
   renderOriginBanner();
+  updateStorageStatus();
   setupArticleModal();
 </script>
 

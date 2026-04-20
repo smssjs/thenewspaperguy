@@ -31,6 +31,8 @@
     font-size: 15px;
     line-height: 1.5;
     min-height: 100vh;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   /* Paper texture */
@@ -1371,7 +1373,77 @@
   }
   @media (max-width: 600px) {
     .grid { grid-template-columns: 1fr; }
-    .suggestions-grid { grid-template-columns: 1fr; }
+    .masthead {
+      padding: 18px 16px 16px;
+    }
+    .masthead-top {
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+    }
+    .masthead-logo-title {
+      flex-direction: column;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .masthead-logo {
+      width: 56px;
+      height: 56px;
+    }
+    .title {
+      font-size: clamp(36px, 15vw, 56px);
+      line-height: 0.98;
+    }
+    nav.tabs {
+      padding: 0 16px 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tab {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 14px 12px;
+      text-align: center;
+      border-left: 1px solid var(--soft-rule);
+    }
+    .refresh-btn {
+      width: 100%;
+      margin: 0 !important;
+      padding: 10px 12px;
+    }
+    main {
+      padding: 16px 16px 56px;
+    }
+    .feed-section {
+      min-width: 0;
+      border-left: 1px solid var(--ink);
+    }
+    .widget-header {
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .widget-title {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+      line-height: 1.2;
+    }
+    .item-title {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .item-title-text {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+    }
+    .item-date {
+      font-size: 9px;
+    }
     .add-form { grid-template-columns: 1fr; }
     .add-form input { border-right: none; border-bottom: 1px solid var(--ink); }
     .google-config-row { grid-template-columns: 1fr; }
@@ -1503,12 +1575,6 @@
         </div>
 
         <div class="diag-output" id="diag-output"></div>
-      </div>
-
-      <div class="suggestions">
-        <div class="section-label">Starter Recommendations</div>
-        <h3 style="font-family: 'Fraunces', serif; font-weight: 400; font-style: italic; font-size: 22px; letter-spacing: -0.01em;">Popular feeds to get you started</h3>
-        <div class="suggestions-grid" id="suggestions"></div>
       </div>
     </div>
   </section>
@@ -3084,7 +3150,7 @@
       grid.innerHTML = `
         <div class="empty">
           <h2>A blank front page.</h2>
-          <p>Your feed collection is empty. Head to the Configure tab to subscribe to your first RSS feed, or pick from the starter recommendations.</p>
+          <p>Your feed collection is empty. Head to the Configure tab to subscribe to your first RSS feed.</p>
           <button onclick="switchTab('configure')">Configure Feeds →</button>
         </div>`;
       return;
@@ -3317,6 +3383,7 @@
 
   function renderSuggestions() {
     const box = document.getElementById('suggestions');
+    if (!box) return;
     box.innerHTML = '';
     const existingUrls = new Set(feeds.map(f => f.url));
 

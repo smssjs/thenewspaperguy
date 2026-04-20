@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,900&family=JetBrains+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600&family=Bebas+Neue&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root {
     --ink: #1a1612;
@@ -496,6 +497,73 @@
     color: var(--muted);
     letter-spacing: 0.04em;
     line-height: 1.7;
+  }
+
+  .google-sync-panel {
+    margin: 0 0 40px;
+    padding: 22px 24px;
+    border: 1px solid var(--ink);
+    background: rgba(196, 52, 28, 0.03);
+  }
+
+  .google-sync-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-style: italic;
+    font-size: 24px;
+    letter-spacing: -0.01em;
+    margin-bottom: 10px;
+  }
+
+  .google-sync-copy {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    max-width: 700px;
+  }
+
+  .google-config-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0;
+    margin-bottom: 14px;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+  }
+
+  .google-config-row input {
+    padding: 16px 18px;
+    border: none;
+    background: transparent;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    border-right: 1px solid var(--ink);
+  }
+
+  .google-config-row button {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 0 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .google-sync-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .google-sync-status {
+    margin-bottom: 12px;
   }
 
   /* Discover by Interest */
@@ -1111,6 +1179,8 @@
     .suggestions-grid { grid-template-columns: 1fr; }
     .add-form { grid-template-columns: 1fr; }
     .add-form input { border-right: none; border-bottom: 1px solid var(--ink); }
+    .google-config-row { grid-template-columns: 1fr; }
+    .google-config-row input { border-right: none; border-bottom: 1px solid var(--ink); }
     .masthead-bottom { flex-direction: column; gap: 8px; align-items: flex-start; }
   }
 
@@ -1186,6 +1256,24 @@
         <div class="storage-help">Backups are plain JSON files containing your configured feed names, URLs, categories, columns, and hidden-state settings.</div>
       </div>
 
+      <div class="google-sync-panel">
+        <div class="section-label">Google Drive Sync</div>
+        <h3 class="google-sync-title">Sync across devices</h3>
+        <p class="google-sync-copy">Sign in with Google and store your subscription configuration in your Google Drive app data folder. The same Google account can then load the same feed setup on any device.</p>
+        <div class="google-config-row">
+          <input type="text" id="google-client-id-input" placeholder="Google OAuth client ID (from Google Cloud console)" autocomplete="off">
+          <button id="save-google-client-id-btn">Save Client ID</button>
+        </div>
+        <div class="diag-origin google-sync-status" id="google-sync-status"></div>
+        <div class="google-sync-actions">
+          <button class="storage-btn" id="google-connect-btn">Connect Google Drive</button>
+          <button class="storage-btn secondary" id="google-load-btn">Load From Drive</button>
+          <button class="storage-btn secondary" id="google-save-btn">Save To Drive</button>
+          <button class="storage-btn secondary" id="google-signout-btn">Disconnect</button>
+        </div>
+        <div class="storage-help">You must create a Google OAuth web client and authorize this GitHub Pages origin before Drive sync will work. Your feed file is stored privately in Drive <code>appDataFolder</code>, not in visible folders.</div>
+      </div>
+
       <div class="discover">
         <div class="section-label">Discover by Interest</div>
         <h3 class="discover-title">Tell us what you want to read</h3>
@@ -1231,7 +1319,11 @@
 <script>
   // ======= STATE =======
   const STORAGE_KEY = 'daily-feed-subscriptions-v3';
+  const GOOGLE_CLIENT_ID_KEY = 'daily-feed-google-client-id-v1';
+  const GOOGLE_SYNC_META_KEY = 'daily-feed-google-sync-meta-v1';
   const MAX_ITEMS_PER_FEED = 8;
+  const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const GOOGLE_DRIVE_FILENAME = 'thenewspaperguy-subscriptions.json';
 
   // Category order and column mapping
   const CATEGORY_ORDER = ['Global', 'USA', 'Finance', 'India'];
@@ -1296,7 +1388,54 @@
     'Google News — World'
   ];
 
+  const googleSyncState = {
+    clientId: loadGoogleClientId(),
+    accessToken: '',
+    tokenClient: null,
+    driveFileId: '',
+    userLabel: '',
+    autoSaveTimer: null,
+    connected: false,
+    syncInFlight: false,
+    lastSyncedAt: loadGoogleSyncMeta().lastSyncedAt || '',
+  };
+
   let feeds = loadFeeds();
+
+  function loadGoogleClientId() {
+    try {
+      return localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function saveGoogleClientId(value) {
+    const cleaned = String(value || '').trim();
+    googleSyncState.clientId = cleaned;
+    try {
+      if (cleaned) {
+        localStorage.setItem(GOOGLE_CLIENT_ID_KEY, cleaned);
+      } else {
+        localStorage.removeItem(GOOGLE_CLIENT_ID_KEY);
+      }
+    } catch {}
+  }
+
+  function loadGoogleSyncMeta() {
+    try {
+      const raw = localStorage.getItem(GOOGLE_SYNC_META_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveGoogleSyncMeta(meta) {
+    try {
+      localStorage.setItem(GOOGLE_SYNC_META_KEY, JSON.stringify(meta || {}));
+    } catch {}
+  }
 
   function storageAvailable() {
     try {
@@ -1344,6 +1483,59 @@
     el.innerHTML = `Subscriptions are being stored in <code>localStorage</code> for <code>${escapeHtml(location.origin)}</code>. Current saved feeds: <strong>${savedCount}</strong>.`;
   }
 
+  function updateGoogleSyncStatus(messageOverride = '') {
+    const el = document.getElementById('google-sync-status');
+    if (!el) return;
+
+    if (messageOverride) {
+      el.className = 'diag-origin google-sync-status';
+      el.innerHTML = messageOverride;
+      return;
+    }
+
+    if (!googleSyncState.clientId) {
+      el.className = 'diag-origin google-sync-status warn';
+      el.innerHTML = `<strong>Google Drive sync is not configured yet.</strong><br>Paste a Google OAuth web client ID above, save it, then connect your Google account.`;
+      return;
+    }
+
+    if (!googleSyncState.connected) {
+      el.className = 'diag-origin google-sync-status';
+      el.innerHTML = `Client ID saved. Sign in with Google to sync subscriptions across devices via Drive <code>appDataFolder</code>.`;
+      return;
+    }
+
+    const syncText = googleSyncState.lastSyncedAt
+      ? `Last Drive sync: <strong>${escapeHtml(new Date(googleSyncState.lastSyncedAt).toLocaleString())}</strong>.`
+      : 'Drive connected, but no sync has completed yet.';
+
+    el.className = 'diag-origin google-sync-status';
+    el.innerHTML = `<strong>Google Drive connected.</strong> ${googleSyncState.userLabel ? `Account: <code>${escapeHtml(googleSyncState.userLabel)}</code>. ` : ''}${syncText}`;
+  }
+
+  function persistGoogleSyncTimestamp(timestamp) {
+    googleSyncState.lastSyncedAt = timestamp || new Date().toISOString();
+    saveGoogleSyncMeta({ lastSyncedAt: googleSyncState.lastSyncedAt });
+    updateGoogleSyncStatus();
+  }
+
+  function onGoogleConnected() {
+    googleSyncState.connected = true;
+    updateGoogleSyncStatus();
+  }
+
+  function clearGoogleConnection() {
+    googleSyncState.accessToken = '';
+    googleSyncState.userLabel = '';
+    googleSyncState.driveFileId = '';
+    googleSyncState.connected = false;
+    if (googleSyncState.autoSaveTimer) {
+      clearTimeout(googleSyncState.autoSaveTimer);
+      googleSyncState.autoSaveTimer = null;
+    }
+    updateGoogleSyncStatus();
+  }
+
   // Storage key bumped to v3 because the feed object shape now includes `category`.
   // Old v2 data without categories will be auto-backfilled via categorize() on load.
   function loadFeeds() {
@@ -1386,6 +1578,7 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(feeds)); } catch {}
     updateCounts();
     updateStorageStatus();
+    scheduleDriveAutosave();
   }
 
   function exportFeeds() {
@@ -1434,6 +1627,241 @@
     } finally {
       event.target.value = '';
     }
+  }
+
+  function ensureGoogleClientId() {
+    const clientId = String(googleSyncState.clientId || '').trim();
+    if (!clientId) {
+      throw new Error('Save a Google OAuth client ID first.');
+    }
+    return clientId;
+  }
+
+  function ensureGoogleLibrary() {
+    if (!(window.google && google.accounts && google.accounts.oauth2)) {
+      throw new Error('Google Identity Services is still loading. Try again in a moment.');
+    }
+  }
+
+  function makeGoogleTokenRequest(prompt, callback) {
+    ensureGoogleLibrary();
+    const clientId = ensureGoogleClientId();
+
+    if (!googleSyncState.tokenClient || googleSyncState.tokenClient.client_id !== clientId) {
+      googleSyncState.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: GOOGLE_DRIVE_SCOPE,
+        callback: () => {},
+      });
+      googleSyncState.tokenClient.client_id = clientId;
+    }
+
+    googleSyncState.tokenClient.callback = (response) => {
+      if (response && response.error) {
+        callback(new Error(response.error));
+        return;
+      }
+      googleSyncState.accessToken = response.access_token || googleSyncState.accessToken;
+      onGoogleConnected();
+      callback(null, response);
+    };
+
+    googleSyncState.tokenClient.requestAccessToken({ prompt });
+  }
+
+  function ensureDriveAccess(interactive = false) {
+    return new Promise((resolve, reject) => {
+      if (googleSyncState.accessToken && !interactive) {
+        onGoogleConnected();
+        resolve(googleSyncState.accessToken);
+        return;
+      }
+
+      makeGoogleTokenRequest(interactive ? 'consent' : '', async (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        try {
+          await hydrateGoogleUserLabel();
+        } catch {}
+        resolve(googleSyncState.accessToken);
+      });
+    });
+  }
+
+  async function googleApiFetch(url, options = {}) {
+    const token = await ensureDriveAccess(false);
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', 'Bearer ' + token);
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      clearGoogleConnection();
+      throw new Error('Google session expired. Connect again.');
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error('Google Drive request failed (' + response.status + '): ' + (text || 'unknown error').slice(0, 120));
+    }
+    return response;
+  }
+
+  async function hydrateGoogleUserLabel() {
+    if (!googleSyncState.accessToken) return;
+    try {
+      const response = await googleApiFetch('https://www.googleapis.com/oauth2/v3/userinfo');
+      const payload = await response.json();
+      googleSyncState.userLabel = payload.email || payload.name || '';
+      updateGoogleSyncStatus();
+    } catch {
+      googleSyncState.userLabel = 'Google account';
+    }
+  }
+
+  async function findDriveConfigFile() {
+    const query = encodeURIComponent(`name='${GOOGLE_DRIVE_FILENAME}' and 'appDataFolder' in parents and trashed=false`);
+    const response = await googleApiFetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)&pageSize=1`);
+    const payload = await response.json();
+    const file = payload.files && payload.files[0] ? payload.files[0] : null;
+    googleSyncState.driveFileId = file ? file.id : '';
+    return file;
+  }
+
+  async function writeDriveConfig() {
+    if (googleSyncState.syncInFlight) return;
+    googleSyncState.syncInFlight = true;
+    updateGoogleSyncStatus('Saving subscriptions to Google Drive…');
+
+    try {
+      await ensureDriveAccess(false);
+      const existing = await findDriveConfigFile();
+      const boundary = 'boundary-' + Date.now();
+      const metadata = existing
+        ? { name: GOOGLE_DRIVE_FILENAME }
+        : { name: GOOGLE_DRIVE_FILENAME, parents: ['appDataFolder'] };
+      const body = [
+        `--${boundary}`,
+        'Content-Type: application/json; charset=UTF-8',
+        '',
+        JSON.stringify(metadata),
+        `--${boundary}`,
+        'Content-Type: application/json; charset=UTF-8',
+        '',
+        JSON.stringify(feeds, null, 2),
+        `--${boundary}--`,
+      ].join('\r\n');
+
+      const url = existing
+        ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart&fields=id,modifiedTime`
+        : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime';
+      const method = existing ? 'PATCH' : 'POST';
+      const response = await googleApiFetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'multipart/related; boundary=' + boundary,
+        },
+        body,
+      });
+      const payload = await response.json();
+      if (payload.id) googleSyncState.driveFileId = payload.id;
+      persistGoogleSyncTimestamp(payload.modifiedTime || new Date().toISOString());
+      toast('Saved to Google Drive');
+    } finally {
+      googleSyncState.syncInFlight = false;
+      updateGoogleSyncStatus();
+    }
+  }
+
+  async function loadDriveConfig() {
+    updateGoogleSyncStatus('Loading subscriptions from Google Drive…');
+    await ensureDriveAccess(false);
+    const existing = await findDriveConfigFile();
+    if (!existing) {
+      updateGoogleSyncStatus('Google Drive connected, but no saved subscription file was found yet.');
+      toast('No Drive backup found yet', true);
+      return;
+    }
+
+    const response = await googleApiFetch(`https://www.googleapis.com/drive/v3/files/${existing.id}?alt=media`);
+    const payload = await response.json();
+    if (!Array.isArray(payload)) {
+      throw new Error('Saved Drive config is not a valid feed list.');
+    }
+
+    const imported = payload.map(normalizeFeedRecord).filter(Boolean);
+    if (!imported.length) {
+      throw new Error('Drive config does not contain any valid feeds.');
+    }
+
+    const seen = new Set();
+    feeds = imported.filter((feed) => {
+      if (seen.has(feed.url)) return false;
+      seen.add(feed.url);
+      return true;
+    });
+    saveFeeds();
+    renderConfigure();
+    renderHome();
+    persistGoogleSyncTimestamp(existing.modifiedTime || new Date().toISOString());
+    toast(`Loaded ${feeds.length} subscription${feeds.length === 1 ? '' : 's'} from Drive`);
+  }
+
+  function scheduleDriveAutosave() {
+    if (!googleSyncState.connected || !googleSyncState.accessToken) return;
+    if (googleSyncState.autoSaveTimer) clearTimeout(googleSyncState.autoSaveTimer);
+    googleSyncState.autoSaveTimer = setTimeout(() => {
+      writeDriveConfig().catch((error) => {
+        updateGoogleSyncStatus(`<strong>Google Drive autosave failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+      });
+    }, 900);
+  }
+
+  async function connectGoogleDrive() {
+    try {
+      updateGoogleSyncStatus('Connecting to Google Drive…');
+      await ensureDriveAccess(true);
+      await loadDriveConfig().catch((error) => {
+        if (/No Drive backup/.test(error.message || '')) return;
+        throw error;
+      });
+      onGoogleConnected();
+      if (!googleSyncState.lastSyncedAt) updateGoogleSyncStatus('Google Drive connected. No backup file exists yet. Save to Drive to create one.');
+    } catch (error) {
+      clearGoogleConnection();
+      updateGoogleSyncStatus(`<strong>Google connection failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+      toast(error.message || 'Google connection failed', true);
+    }
+  }
+
+  async function saveToGoogleDrive() {
+    try {
+      await ensureDriveAccess(!googleSyncState.connected);
+      await writeDriveConfig();
+    } catch (error) {
+      updateGoogleSyncStatus(`<strong>Save to Drive failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+      toast(error.message || 'Save to Drive failed', true);
+    }
+  }
+
+  async function loadFromGoogleDrive() {
+    try {
+      await ensureDriveAccess(!googleSyncState.connected);
+      await loadDriveConfig();
+    } catch (error) {
+      updateGoogleSyncStatus(`<strong>Load from Drive failed.</strong><br>${escapeHtml(error.message || 'Unknown error')}`);
+      toast(error.message || 'Load from Drive failed', true);
+    }
+  }
+
+  function disconnectGoogleDrive() {
+    try {
+      if (googleSyncState.accessToken && window.google && google.accounts && google.accounts.oauth2) {
+        google.accounts.oauth2.revoke(googleSyncState.accessToken, () => {});
+      }
+    } catch {}
+    clearGoogleConnection();
+    toast('Google Drive disconnected');
   }
 
   // ======= DATE =======
@@ -2308,6 +2736,18 @@
   document.getElementById('export-feeds-btn').addEventListener('click', exportFeeds);
   document.getElementById('import-feeds-btn').addEventListener('click', () => document.getElementById('import-feeds-input').click());
   document.getElementById('import-feeds-input').addEventListener('change', importFeedsFromFile);
+  document.getElementById('google-client-id-input').value = googleSyncState.clientId;
+  document.getElementById('save-google-client-id-btn').addEventListener('click', () => {
+    const value = document.getElementById('google-client-id-input').value;
+    saveGoogleClientId(value);
+    clearGoogleConnection();
+    updateGoogleSyncStatus();
+    toast(googleSyncState.clientId ? 'Google client ID saved' : 'Google client ID cleared');
+  });
+  document.getElementById('google-connect-btn').addEventListener('click', connectGoogleDrive);
+  document.getElementById('google-load-btn').addEventListener('click', loadFromGoogleDrive);
+  document.getElementById('google-save-btn').addEventListener('click', saveToGoogleDrive);
+  document.getElementById('google-signout-btn').addEventListener('click', disconnectGoogleDrive);
   document.getElementById('discover-input').addEventListener('keydown', (e) => {
     // Ctrl/Cmd + Enter submits from the multi-line textarea
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -2360,6 +2800,7 @@
   renderConfigure();
   renderOriginBanner();
   updateStorageStatus();
+  updateGoogleSyncStatus();
   setupArticleModal();
 </script>
 
